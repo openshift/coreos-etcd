@@ -390,10 +390,10 @@ func checkSupportArch() {
 	// unsupported arch only configured via environment variable
 	// so unset here to not parse through flag
 	defer os.Unsetenv("ETCD_UNSUPPORTED_ARCH")
-	if env, ok := os.LookupEnv("ETCD_UNSUPPORTED_ARCH"); ok && env == runtime.GOARCH {
-		plog.Warningf("running etcd on unsupported architecture %q since ETCD_UNSUPPORTED_ARCH is set", env)
+	if env, ok := os.LookupEnv("ETCD_UNSUPPORTED_ARCH"); ok && (env == runtime.GOARCH || env == "1") {
+		plog.Warningf("running etcd on unsupported architecture %s since ETCD_UNSUPPORTED_ARCH is set", runtime.GOARCH)
 		return
 	}
-	plog.Errorf("etcd on unsupported platform without ETCD_UNSUPPORTED_ARCH=%s set.", runtime.GOARCH)
+	plog.Errorf("etcd on unsupported platform %s without ETCD_UNSUPPORTED_ARCH=1 set.", runtime.GOARCH)
 	os.Exit(1)
 }

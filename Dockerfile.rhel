@@ -1,5 +1,7 @@
 FROM openshift/golang-builder:1.11 AS builder
 
+ENV ETCD_UNSUPPORTED_ARCH=1
+
 WORKDIR /go/src/github.com/coreos/etcd
 
 COPY . .
@@ -8,6 +10,8 @@ RUN make build
 
 # stage 2
 FROM openshift/origin-base
+
+ENV ETCD_UNSUPPORTED_ARCH=1
 
 ENTRYPOINT ["/usr/bin/etcd"]
 
