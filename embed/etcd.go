@@ -126,6 +126,10 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		return e, err
 	}
 
+	if err = configureMetricListeners(cfg); err != nil {
+		return e, err
+	}
+
 	for _, sctx := range e.sctxs {
 		e.Clients = append(e.Clients, sctx.l)
 	}
@@ -240,6 +244,14 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 	)
 	serving = true
 	return e, nil
+}
+
+func configureMetricListeners(cfg *Config) error {
+	if err := cfg.MetricSelfCert(); err != nil {
+		cfg.logger.Fatal("failed to get metric self-signed certs", zap.Error(err))
+		return err
+	}
+	return nil
 }
 
 func print(lg *zap.Logger, ec Config, sc etcdserver.ServerConfig, memberInitialized bool) {
@@ -667,7 +679,7 @@ func (e *Etcd) serveMetrics() (err error) {
 		etcdhttp.HandleMetricsHealth(metricsMux, e.Server)
 
 		for _, murl := range e.cfg.ListenMetricsUrls {
-			tlsInfo := &e.cfg.ClientTLSInfo
+			tlsInfo := &e.cfg.MetricTLSInfo
 			if murl.Scheme == "http" {
 				tlsInfo = nil
 			}

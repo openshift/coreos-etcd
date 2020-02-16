@@ -183,6 +183,8 @@ type Config struct {
 	ClientAutoTLS  bool
 	PeerTLSInfo    transport.TLSInfo
 	PeerAutoTLS    bool
+	MetricTLSInfo  transport.TLSInfo
+	MetricAutoTLS  bool
 
 	// CipherSuites is a list of supported TLS cipher suites between
 	// client/server and peers. If empty, Go auto-populates the list.
@@ -739,6 +741,25 @@ func (cfg *Config) PeerSelfCert() (err error) {
 		return err
 	}
 	return updateCipherSuites(&cfg.PeerTLSInfo, cfg.CipherSuites)
+}
+
+func (cfg *Config) MetricSelfCert() (err error) {
+	if !cfg.MetricAutoTLS {
+		return nil
+	}
+	if !cfg.MetricTLSInfo.Empty() {
+		cfg.logger.Warn("ignoring metric auto TLS since certs given")
+		return nil
+	}
+	chosts := make([]string, len(cfg.LCUrls))
+	for i, u := range cfg.LCUrls {
+		chosts[i] = u.Host
+	}
+	cfg.MetricTLSInfo, err = transport.SelfCert(cfg.logger, filepath.Join(cfg.Dir, "fixtures", "metric"), chosts)
+	if err != nil {
+		return err
+	}
+	return updateCipherSuites(&cfg.MetricTLSInfo, cfg.CipherSuites)
 }
 
 // UpdateDefaultClusterFromName updates cluster advertise URLs with, if available, default host,
