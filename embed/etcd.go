@@ -251,6 +251,19 @@ func configureMetricListeners(cfg *Config) error {
 		cfg.logger.Fatal("failed to get metric self-signed certs", zap.Error(err))
 		return err
 	}
+	for _, u := range cfg.ListenMetricsUrls {
+		if u.Scheme == "http" || u.Scheme == "unix" {
+			if !cfg.MetricTLSInfo.Empty() {
+				cfg.logger.Warn("scheme for metrics is HTTP while key and cert files are present; ignoring key and cert files", zap.String("listen-metric-url", u.String()))
+			}
+			if cfg.MetricTLSInfo.ClientCertAuth {
+				cfg.logger.Warn("scheme is HTTP while --metric-cert-auth is enabled; ignoring metric cert auth for this URL", zap.String("listen-metric-url", u.String()))
+			}
+		}
+		if (u.Scheme == "https" || u.Scheme == "unixs") && cfg.MetricTLSInfo.Empty() {
+			return fmt.Errorf("TLS key/cert (--cert-file, --key-file) must be provided for listen metric url %s with HTTPS scheme", u.String())
+		}
+	}
 	return nil
 }
 
