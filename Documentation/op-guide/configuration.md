@@ -338,6 +338,41 @@ The security flags help to [build a secure etcd cluster][security].
 + default: ""
 + env variable: ETCD_PEER_CERT_ALLOWED_HOSTNAME
 
+### --metric-cert-file
++ Path to the metric server TLS cert file.
++ default: ""
++ env variable: ETCD_METRIC_CERT_FILE
+
+### --metric-key-file
++ Path to the metric server TLS key file.
++ default: ""
++ env variable: ETCD_METRIC_KEY_FILE
+
+### --metric-cert-auth
++ Enable metric cert authentication.
++ default: false
++ env variable: ETCD_METRIC_CERT_AUTH
+
+### --metric-crl-file
++ Path to the metric certificate revocation list file.
++ default: ""
++ env variable: ETCD_METRIC_CRL_FILE
+
+### --metric-cert-allowed-hostname
++ Allowed TLS name for metric cert authentication.
++ default: ""
++ env variable: ETCD_METRIC_CERT_ALLOWED_HOSTNAME
+
+### --metric-trusted-ca-file
++ Path to the metric server TLS trusted CA cert file.
++ default: ""
++ env variable: ETCD_METRIC_TRUSTED_CA_FILE
+
+### --metric-auto-tls
++ Metric TLS using generated certificates
++ default: false
++ env variable: ETCD_METRIC_AUTO_TLS
+
 ### --cipher-suites
 + Comma-separated list of supported TLS cipher suites between server/client and peers.
 + default: ""
