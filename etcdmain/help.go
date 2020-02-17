@@ -152,6 +152,20 @@ Security:
     Peer TLS using self-generated certificates if --peer-key-file and --peer-cert-file are not provided.
   --peer-crl-file ''
     Path to the peer certificate revocation list file.
+  --metric-cert-file ''
+    Path to the metric server TLS cert file.
+  --metric-key-file ''
+    Path to the metric server TLS key file.
+  --metric-cert-auth 'false'
+    Enable metric cert authentication.
+  --metric-crl-file ''
+    Path to the metric certificate revocation list file.
+  --metric-cert-allowed-hostname ''
+    Allowed TLS hostname for metric cert authentication.
+  --metric-trusted-ca-file ''
+    Path to the metric server TLS trusted CA cert file.
+  --metric-auto-tls 'false'
+    Metric server TLS using generated certificates.
   --cipher-suites ''
     Comma-separated list of supported TLS cipher suites between client/server and peers (empty will be auto-populated by Go).
   --cors '*'
