@@ -3,6 +3,7 @@ package discover_etcd_initial_cluster
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,8 +176,8 @@ func (o *DiscoverEtcdInitialClusterOptions) Run() error {
 		return fmt.Errorf("timed out")
 
 	case targetMember != nil && len(targetMember.Name) == 0 && memberDirExists:
-		// our member has been added to the cluster and has never been started before, but a data directory exists. This means that we have dirty data we must remove
-		archiveDataDir(memberDir)
+		// our member has been added to the cluster and has never been started before, but a data directory exists. This means that we have dirty data we must empty it.
+		archiveAndEmptyDataDir(o.DataDir)
 
 	default:
 		// a target member was found, but no exception circumstances.
@@ -198,16 +199,79 @@ func (o *DiscoverEtcdInitialClusterOptions) Run() error {
 	return nil
 }
 
-// TO DO: instead of archiving, we should remove the directory to avoid any confusion with the backups.
-func archiveDataDir(sourceDir string) error {
+func archiveAndEmptyDataDir(sourceDir string) error {
 	targetDir := filepath.Join(sourceDir+"-removed-archive", time.Now().Format(time.RFC3339))
 
 	// If dir already exists, add seconds to the dir name
 	if _, err := os.Stat(targetDir); err == nil {
 		targetDir = filepath.Join(sourceDir+"-removed-archive", time.Now().Add(time.Second).Format(time.RFC3339))
 	}
-	if err := os.Rename(sourceDir, targetDir); err != nil && !os.IsNotExist(err) {
+	if err := CopyAndRemoveDir(sourceDir, targetDir); err != nil {
 		return err
+	}
+	return nil
+}
+
+func CopyAndRemoveDir(source string, dest string) (err error) {
+
+	// get properties of source dir
+	sourceinfo, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+
+	// create dest dir
+	err = os.MkdirAll(dest, sourceinfo.Mode())
+	if err != nil {
+		return err
+	}
+
+	directory, _ := os.Open(source)
+	objects, err := directory.Readdir(-1)
+	for _, obj := range objects {
+		sourcefilename := filepath.Join(source, obj.Name())
+		destinationfilename := filepath.Join(dest, obj.Name())
+		if obj.IsDir() {
+			// create sub-directories - recursively
+			err = CopyAndRemoveDir(sourcefilename, destinationfilename)
+			if err != nil {
+				// continue despite errors
+				fmt.Fprintln(os.Stderr, "Failed to copy %s: %v", sourcefilename, err)
+			}
+		} else {
+			// perform copy
+			err = CopyFile(sourcefilename, destinationfilename)
+			if err != nil {
+				// continue despite errors
+				fmt.Fprintln(os.Stderr, "Failed to copy %s: %v", sourcefilename, err)
+			}
+		}
+		os.RemoveAll(sourcefilename)
+	}
+	return
+}
+
+func CopyFile(source string, dest string) (err error) {
+	sourcefile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+
+	defer sourcefile.Close()
+
+	destfile, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+
+	defer destfile.Close()
+
+	_, err = io.Copy(destfile, sourcefile)
+	if err == nil {
+		sourceinfo, err := os.Stat(source)
+		if err != nil {
+			err = os.Chmod(dest, sourceinfo.Mode())
+		}
 	}
 	return nil
 }
