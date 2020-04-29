@@ -59,6 +59,7 @@ var (
 	restoreWalDir       string
 	restorePeerURLs     string
 	restoreName         string
+	forceRestore        bool
 	skipHashCheck       bool
 )
 
@@ -105,6 +106,7 @@ func NewSnapshotRestoreCommand() *cobra.Command {
 	cmd.Flags().StringVar(&restoreClusterToken, "initial-cluster-token", "etcd-cluster", "Initial cluster token for the etcd cluster during restore bootstrap")
 	cmd.Flags().StringVar(&restorePeerURLs, "initial-advertise-peer-urls", defaultInitialAdvertisePeerURLs, "List of this member's peer URLs to advertise to the rest of the cluster")
 	cmd.Flags().StringVar(&restoreName, "name", defaultName, "Human-readable name for this member")
+	cmd.Flags().BoolVar(&forceRestore, "force", false, "Overwrite if data-dir exists")
 	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "Ignore snapshot integrity hash value (required if copied from data directory)")
 
 	return cmd
@@ -195,8 +197,13 @@ func snapshotRestoreCommandFunc(cmd *cobra.Command, args []string) {
 	}
 	snapdir := filepath.Join(basedir, "member", "snap")
 
-	if _, err := os.Stat(basedir); err == nil {
-		ExitWithError(ExitInvalidInput, fmt.Errorf("data-dir %q exists", basedir))
+
+	if !forceRestore {
+		if _, err := os.Stat(basedir); err == nil {
+			ExitWithError(ExitInvalidInput, fmt.Errorf("data-dir %q exists", basedir))
+		}
+	} else {
+		os.RemoveAll(filepath.Join(basedir, "member"))
 	}
 
 	makeDB(snapdir, args[0], len(cl.Members()))
