@@ -25,18 +25,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/etcd/clientv3/balancer"
+	"github.com/coreos/etcd/clientv3/balancer/picker"
+	"github.com/coreos/etcd/clientv3/balancer/resolver/endpoint"
+	"github.com/coreos/etcd/clientv3/credentials"
+	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	"github.com/coreos/etcd/pkg/logutil"
 	"github.com/google/uuid"
-	"go.etcd.io/etcd/clientv3/balancer"
-	"go.etcd.io/etcd/clientv3/balancer/picker"
-	"go.etcd.io/etcd/clientv3/balancer/resolver/endpoint"
-	"go.etcd.io/etcd/clientv3/credentials"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	"go.etcd.io/etcd/pkg/logutil"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -128,12 +129,8 @@ func NewFromURLs(urls []string) (*Client, error) {
 // Close shuts down the client's etcd connections.
 func (c *Client) Close() error {
 	c.cancel()
-	if c.Watcher != nil {
-		c.Watcher.Close()
-	}
-	if c.Lease != nil {
-		c.Lease.Close()
-	}
+	c.Watcher.Close()
+	c.Lease.Close()
 	if c.resolverGroup != nil {
 		c.resolverGroup.Close()
 	}
@@ -394,6 +391,13 @@ func (c *Client) dialWithBalancerCreds(ep string) grpccredentials.TransportCrede
 		creds = c.processCreds(scheme)
 	}
 	return creds
+}
+
+// WithRequireLeader requires client requests to only succeed
+// when the cluster has a leader.
+func WithRequireLeader(ctx context.Context) context.Context {
+	md := metadata.Pairs(rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
+	return metadata.NewOutgoingContext(ctx, md)
 }
 
 func newClient(cfg *Config) (*Client, error) {

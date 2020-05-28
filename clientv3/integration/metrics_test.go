@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/integration"
-	"go.etcd.io/etcd/pkg/testutil"
-	"go.etcd.io/etcd/pkg/transport"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/integration"
+	"github.com/coreos/etcd/pkg/testutil"
+	"github.com/coreos/etcd/pkg/transport"
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -39,15 +39,14 @@ func TestV3ClientMetrics(t *testing.T) {
 	defer testutil.AfterTest(t)
 
 	var (
-		addr = "localhost:27989"
+		addr string = "localhost:27989"
 		ln   net.Listener
+		err  error
 	)
 
 	// listen for all Prometheus metrics
 	donec := make(chan struct{})
 	go func() {
-		var err error
-
 		defer close(donec)
 
 		srv := &http.Server{Handler: promhttp.Handler()}
@@ -55,12 +54,12 @@ func TestV3ClientMetrics(t *testing.T) {
 
 		ln, err = transport.NewUnixListener(addr)
 		if err != nil {
-			t.Errorf("Error: %v occurred while listening on addr: %v", err, addr)
+			t.Fatalf("Error: %v occurred while listening on addr: %v", err, addr)
 		}
 
 		err = srv.Serve(ln)
 		if err != nil && !transport.IsClosedConnError(err) {
-			t.Errorf("Err serving http requests: %v", err)
+			t.Fatalf("Err serving http requests: %v", err)
 		}
 	}()
 
@@ -88,7 +87,7 @@ func TestV3ClientMetrics(t *testing.T) {
 
 	pBefore := sumCountersForMetricAndLabels(t, url, "grpc_client_started_total", "Put", "unary")
 
-	_, err := cli.Put(context.Background(), "foo", "bar")
+	_, err = cli.Put(context.Background(), "foo", "bar")
 	if err != nil {
 		t.Errorf("Error putting value in key store")
 	}

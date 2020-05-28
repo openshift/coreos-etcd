@@ -4,7 +4,7 @@ title: Configuration flags
 
 etcd is configurable through a configuration file, various command-line flags, and environment variables.
 
-A reusable configuration file is a YAML file made with name and value of one or more command-line flags described below. In order to use this file, specify the file path as a value to the `--config-file` flag or `ETCD_CONFIG_FILE` environment variable. The [sample configuration file][sample-config-file] can be used as a starting point to create a new configuration file as needed.
+A reusable configuration file is a YAML file made with name and value of one or more command-line flags described below. In order to use this file, specify the file path as a value to the `--config-file` flag. The [sample configuration file][sample-config-file] can be used as a starting point to create a new configuration file as needed.
 
 Options set on the command line take precedence over those from the environment. If a configuration file is provided, other command line flags and environment variables will be ignored.
 For example, `etcd --config-file etcd.conf.yml.sample --data-dir /tmp` will ignore the `--data-dir` flag.
@@ -199,7 +199,7 @@ To start etcd automatically using custom settings at startup in Linux, using a [
 
 ### --enable-v2
 + Accept etcd V2 client requests
-+ default: false
++ default: true
 + env variable: ETCD_ENABLE_V2
 
 ## Proxy flags
@@ -270,11 +270,6 @@ The security flags help to [build a secure etcd cluster][security].
 + default: ""
 + env variable: ETCD_CLIENT_CRL_FILE
 
-### --client-cert-allowed-hostname
-+ Allowed Allowed TLS name for client cert authentication.
-+ default: ""
-+ env variable: ETCD_CLIENT_CERT_ALLOWED_HOSTNAME
-
 ### --trusted-ca-file
 + Path to the client server TLS trusted CA cert file.
 + default: ""
@@ -325,25 +320,24 @@ The security flags help to [build a secure etcd cluster][security].
 
 ### --peer-cert-allowed-cn
 + Allowed CommonName for inter peer authentication.
-+ default: ""
++ default: none
 + env variable: ETCD_PEER_CERT_ALLOWED_CN
-
-### --peer-cert-allowed-hostname
-+ Allowed TLS certificate name for inter peer authentication.
-+ default: ""
-+ env variable: ETCD_PEER_CERT_ALLOWED_HOSTNAME
 
 ### --cipher-suites
 + Comma-separated list of supported TLS cipher suites between server/client and peers.
 + default: ""
 + env variable: ETCD_CIPHER_SUITES
 
+### --experimental-peer-skip-client-san-verification 
++ Skip verification of SAN field in client certificate for peer connections.
++ default: false
++ env variable: ETCD_EXPERIMENTAL_PEER_SKIP_CLIENT_SAN_VERIFICATION
+
 ## Logging flags
 
 ### --logger
 
-**Available from v3.4.**
-**WARNING: `--logger=capnslog` to be deprecated in v3.5.**
+**Available from v3.4**
 
 + Specify 'zap' for structured logging or 'capnslog'.
 + default: capnslog
@@ -355,27 +349,12 @@ The security flags help to [build a secure etcd cluster][security].
 + env variable: ETCD_LOG_OUTPUTS
 + 'default' use 'stderr' config for v3.4 during zap logger migraion
 
-### --log-level
-
-**Available from v3.4.**
-
-+ Configures log level. Only supports debug, info, warn, error, panic, or fatal.
-+ default: info
-+ env variable: ETCD_LOG_LEVEL
-+ 'default' use 'info'.
-
 ### --debug
-
-**WARNING: to be deprecated in v3.5.**
-
 + Drop the default log level to DEBUG for all subpackages.
 + default: false (INFO for all packages)
 + env variable: ETCD_DEBUG
 
 ### --log-package-levels
-
-**WARNING: to be deprecated in v3.5.**
-
 + Set individual etcd subpackages to specific log levels. An example being `etcdserver=WARNING,security=DEBUG`
 + default: "" (INFO for all packages)
 + env variable: ETCD_LOG_PACKAGE_LEVELS
@@ -398,7 +377,7 @@ Follow the instructions when using these flags.
 + default: false
 
 ### --config-file
-+ Load server configuration from a file. Note that if a configuration file is provided, other command line flags and environment variables will be ignored.
++ Load server configuration from a file.
 + default: ""
 + example: [sample configuration file][sample-config-file]
 + env variable: ETCD_CONFIG_FILE
@@ -446,11 +425,6 @@ Follow the instructions when using these flags.
 + default: 0s
 + env variable: ETCD_EXPERIMENTAL_CORRUPT_CHECK_TIME
 
-### --experimental-compaction-batch-limit
-+ Sets the maximum revisions deleted in each compaction batch.
-+ default: 1000
-+ env variable: ETCD_EXPERIMENTAL_COMPACTION_BATCH_LIMIT
-
 [build-cluster]: clustering.md#static
 [reconfig]: runtime-configuration.md
 [discovery]: clustering.md#discovery
@@ -462,12 +436,3 @@ Follow the instructions when using these flags.
 [tuning]: ../tuning.md#time-parameters
 [sample-config-file]: ../../etcd.conf.yml.sample
 [recovery]: recovery.md#disaster-recovery
-
-### --experimental-peer-skip-client-san-verification
-+ Skip verification of SAN field in client certificate for peer connections. This can be helpful e.g. if
-cluster members run in different networks behind a NAT.
-
-  In this case make sure to use peer certificates based on
-a private certificate authority using `--peer-cert-file`, `--peer-key-file`, `--peer-trusted-ca-file`
-+ default: false
-+ env variable: ETCD_EXPERIMENTAL_PEER_SKIP_CLIENT_SAN_VERIFICATION

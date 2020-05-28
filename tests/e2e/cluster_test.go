@@ -20,8 +20,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-
-	"go.etcd.io/etcd/etcdserver"
 )
 
 const etcdProcessBasePort = 20000
@@ -187,7 +185,7 @@ func (cfg *etcdProcessClusterConfig) etcdServerProcessConfigs() []*etcdServerPro
 		cfg.execPath = binPath
 	}
 	if cfg.snapshotCount == 0 {
-		cfg.snapshotCount = etcdserver.DefaultSnapshotCount
+		cfg.snapshotCount = 10000
 	}
 
 	etcdCfgs := make([]*etcdServerProcessConfig, cfg.clusterSize)

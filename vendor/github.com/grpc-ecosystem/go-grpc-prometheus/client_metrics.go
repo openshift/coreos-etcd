@@ -7,7 +7,6 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // ClientMetrics represents a collection of metrics to be registered on a
@@ -26,32 +25,31 @@ type ClientMetrics struct {
 // ClientMetrics when not using the default Prometheus metrics registry, for
 // example when wanting to control which metrics are added to a registry as
 // opposed to automatically adding metrics via init functions.
-func NewClientMetrics(counterOpts ...CounterOption) *ClientMetrics {
-	opts := counterOptions(counterOpts)
+func NewClientMetrics() *ClientMetrics {
 	return &ClientMetrics{
 		clientStartedCounter: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
+			prom.CounterOpts{
 				Name: "grpc_client_started_total",
 				Help: "Total number of RPCs started on the client.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method"}),
+			}, []string{"grpc_type", "grpc_service", "grpc_method"}),
 
 		clientHandledCounter: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
+			prom.CounterOpts{
 				Name: "grpc_client_handled_total",
 				Help: "Total number of RPCs completed by the client, regardless of success or failure.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method", "grpc_code"}),
+			}, []string{"grpc_type", "grpc_service", "grpc_method", "grpc_code"}),
 
 		clientStreamMsgReceived: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
+			prom.CounterOpts{
 				Name: "grpc_client_msg_received_total",
 				Help: "Total number of RPC stream messages received by the client.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method"}),
+			}, []string{"grpc_type", "grpc_service", "grpc_method"}),
 
 		clientStreamMsgSent: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
+			prom.CounterOpts{
 				Name: "grpc_client_msg_sent_total",
 				Help: "Total number of gRPC stream messages sent by the client.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method"}),
+			}, []string{"grpc_type", "grpc_service", "grpc_method"}),
 
 		clientHandledHistogramEnabled: false,
 		clientHandledHistogramOpts: prom.HistogramOpts{
@@ -113,20 +111,18 @@ func (m *ClientMetrics) UnaryClientInterceptor() func(ctx context.Context, metho
 		if err != nil {
 			monitor.ReceivedMessage()
 		}
-		st, _ := status.FromError(err)
-		monitor.Handled(st.Code())
+		monitor.Handled(grpc.Code(err))
 		return err
 	}
 }
 
-// StreamClientInterceptor is a gRPC client-side interceptor that provides Prometheus monitoring for Streaming RPCs.
+// StreamServerInterceptor is a gRPC client-side interceptor that provides Prometheus monitoring for Streaming RPCs.
 func (m *ClientMetrics) StreamClientInterceptor() func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		monitor := newClientReporter(m, clientStreamType(desc), method)
 		clientStream, err := streamer(ctx, desc, cc, method, opts...)
 		if err != nil {
-			st, _ := status.FromError(err)
-			monitor.Handled(st.Code())
+			monitor.Handled(grpc.Code(err))
 			return nil, err
 		}
 		return &monitoredClientStream{clientStream, monitor}, nil
@@ -163,8 +159,7 @@ func (s *monitoredClientStream) RecvMsg(m interface{}) error {
 	} else if err == io.EOF {
 		s.monitor.Handled(codes.OK)
 	} else {
-		st, _ := status.FromError(err)
-		s.monitor.Handled(st.Code())
+		s.monitor.Handled(grpc.Code(err))
 	}
 	return err
 }

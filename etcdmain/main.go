@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-systemd/daemon"
-	"go.uber.org/zap"
+	systemdutil "github.com/coreos/go-systemd/util"
 )
 
 func Main() {
@@ -46,13 +46,15 @@ func Main() {
 	startEtcdOrProxyV2()
 }
 
-func notifySystemd(lg *zap.Logger) {
-	_, err := daemon.SdNotify(false, daemon.SdNotifyReady)
+func notifySystemd() {
+	if !systemdutil.IsRunningSystemd() {
+		return
+	}
+	sent, err := daemon.SdNotify(false, "READY=1")
 	if err != nil {
-		if lg != nil {
-			lg.Error("failed to notify systemd for readiness", zap.Error(err))
-		} else {
-			plog.Errorf("failed to notify systemd for readiness: %v", err)
-		}
+		plog.Errorf("failed to notify systemd for readiness: %v", err)
+	}
+	if !sent {
+		plog.Errorf("forgot to set Type=notify in systemd service file?")
 	}
 }

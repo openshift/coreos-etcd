@@ -19,16 +19,13 @@ import (
 	"os"
 	"testing"
 
-	"go.etcd.io/etcd/lease"
-	"go.etcd.io/etcd/mvcc/backend"
-	"go.etcd.io/etcd/pkg/traceutil"
-
-	"go.uber.org/zap"
+	"github.com/coreos/etcd/lease"
+	"github.com/coreos/etcd/mvcc/backend"
 )
 
 func BenchmarkWatchableStorePut(b *testing.B) {
 	be, tmpPath := backend.NewDefaultTmpBackend()
-	s := New(zap.NewExample(), be, &lease.FakeLessor{}, nil, StoreConfig{})
+	s := New(be, &lease.FakeLessor{}, nil)
 	defer cleanup(s, be, tmpPath)
 
 	// arbitrary number of bytes
@@ -49,7 +46,7 @@ func BenchmarkWatchableStorePut(b *testing.B) {
 func BenchmarkWatchableStoreTxnPut(b *testing.B) {
 	var i fakeConsistentIndex
 	be, tmpPath := backend.NewDefaultTmpBackend()
-	s := New(zap.NewExample(), be, &lease.FakeLessor{}, &i, StoreConfig{})
+	s := New(be, &lease.FakeLessor{}, &i)
 	defer cleanup(s, be, tmpPath)
 
 	// arbitrary number of bytes
@@ -60,43 +57,28 @@ func BenchmarkWatchableStoreTxnPut(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		txn := s.Write(traceutil.TODO())
+		txn := s.Write()
 		txn.Put(keys[i], vals[i], lease.NoLease)
 		txn.End()
 	}
 }
 
-// BenchmarkWatchableStoreWatchPutSync benchmarks the case of
+// BenchmarkWatchableStoreWatchSyncPut benchmarks the case of
 // many synced watchers receiving a Put notification.
-func BenchmarkWatchableStoreWatchPutSync(b *testing.B) {
-	benchmarkWatchableStoreWatchPut(b, true)
-}
-
-// BenchmarkWatchableStoreWatchPutUnsync benchmarks the case of
-// many unsynced watchers receiving a Put notification.
-func BenchmarkWatchableStoreWatchPutUnsync(b *testing.B) {
-	benchmarkWatchableStoreWatchPut(b, false)
-}
-
-func benchmarkWatchableStoreWatchPut(b *testing.B, synced bool) {
+func BenchmarkWatchableStoreWatchSyncPut(b *testing.B) {
 	be, tmpPath := backend.NewDefaultTmpBackend()
-	s := newWatchableStore(zap.NewExample(), be, &lease.FakeLessor{}, nil, StoreConfig{})
+	s := newWatchableStore(be, &lease.FakeLessor{}, nil)
 	defer cleanup(s, be, tmpPath)
 
 	k := []byte("testkey")
 	v := []byte("testval")
 
-	rev := int64(0)
-	if !synced {
-		// non-0 value to keep watchers in unsynced
-		rev = 1
-	}
-
 	w := s.NewWatchStream()
 	defer w.Close()
 	watchIDs := make([]WatchID, b.N)
 	for i := range watchIDs {
-		watchIDs[i], _ = w.Watch(0, k, nil, rev)
+		// non-0 value to keep watchers in unsynced
+		watchIDs[i] = w.Watch(k, nil, 1)
 	}
 
 	b.ResetTimer()
@@ -123,7 +105,7 @@ func benchmarkWatchableStoreWatchPut(b *testing.B, synced bool) {
 // we should put to simulate the real-world use cases.
 func BenchmarkWatchableStoreUnsyncedCancel(b *testing.B) {
 	be, tmpPath := backend.NewDefaultTmpBackend()
-	s := NewStore(zap.NewExample(), be, &lease.FakeLessor{}, nil, StoreConfig{})
+	s := NewStore(be, &lease.FakeLessor{}, nil)
 
 	// manually create watchableStore instead of newWatchableStore
 	// because newWatchableStore periodically calls syncWatchersLoop
@@ -160,7 +142,7 @@ func BenchmarkWatchableStoreUnsyncedCancel(b *testing.B) {
 	watchIDs := make([]WatchID, watcherN)
 	for i := 0; i < watcherN; i++ {
 		// non-0 value to keep watchers in unsynced
-		watchIDs[i], _ = w.Watch(0, testKey, nil, 1)
+		watchIDs[i] = w.Watch(testKey, nil, 1)
 	}
 
 	// random-cancel N watchers to make it not biased towards
@@ -180,7 +162,7 @@ func BenchmarkWatchableStoreUnsyncedCancel(b *testing.B) {
 
 func BenchmarkWatchableStoreSyncedCancel(b *testing.B) {
 	be, tmpPath := backend.NewDefaultTmpBackend()
-	s := newWatchableStore(zap.NewExample(), be, &lease.FakeLessor{}, nil, StoreConfig{})
+	s := newWatchableStore(be, &lease.FakeLessor{}, nil)
 
 	defer func() {
 		s.store.Close()
@@ -200,7 +182,7 @@ func BenchmarkWatchableStoreSyncedCancel(b *testing.B) {
 	watchIDs := make([]WatchID, watcherN)
 	for i := 0; i < watcherN; i++ {
 		// 0 for startRev to keep watchers in synced
-		watchIDs[i], _ = w.Watch(0, testKey, nil, 0)
+		watchIDs[i] = w.Watch(testKey, nil, 0)
 	}
 
 	// randomly cancel watchers to make it not biased towards

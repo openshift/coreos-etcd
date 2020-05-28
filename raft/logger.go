@@ -19,7 +19,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"sync"
 )
 
 type Logger interface {
@@ -42,16 +41,11 @@ type Logger interface {
 	Panicf(format string, v ...interface{})
 }
 
-func SetLogger(l Logger) {
-	raftLoggerMu.Lock()
-	raftLogger = l
-	raftLoggerMu.Unlock()
-}
+func SetLogger(l Logger) { raftLogger = l }
 
 var (
 	defaultLogger = &DefaultLogger{Logger: log.New(os.Stderr, "raft", log.LstdFlags)}
 	discardLogger = &DefaultLogger{Logger: log.New(ioutil.Discard, "", 0)}
-	raftLoggerMu  sync.Mutex
 	raftLogger    = Logger(defaultLogger)
 )
 

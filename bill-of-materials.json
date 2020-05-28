@@ -1,5 +1,14 @@
 [
 	{
+		"project": "bitbucket.org/ww/goautoneg",
+		"licenses": [
+			{
+				"type": "BSD 3-clause \"New\" or \"Revised\" License",
+				"confidence": 1
+			}
+		]
+	},
+	{
 		"project": "github.com/beorn7/perks/quantile",
 		"licenses": [
 			{
@@ -14,6 +23,24 @@
 			{
 				"type": "MIT License",
 				"confidence": 0.9441624365482234
+			}
+		]
+	},
+	{
+		"project": "github.com/coreos/bbolt",
+		"licenses": [
+			{
+				"type": "MIT License",
+				"confidence": 1
+			}
+		]
+	},
+	{
+		"project": "github.com/coreos/etcd",
+		"licenses": [
+			{
+				"type": "Apache License 2.0",
+				"confidence": 1
 			}
 		]
 	},
@@ -36,10 +63,19 @@
 		]
 	},
 	{
-		"project": "github.com/coreos/pkg/capnslog",
+		"project": "github.com/coreos/pkg",
 		"licenses": [
 			{
 				"type": "Apache License 2.0",
+				"confidence": 1
+			}
+		]
+	},
+	{
+		"project": "github.com/cpuguy83/go-md2man/md2man",
+		"licenses": [
+			{
+				"type": "MIT License",
 				"confidence": 1
 			}
 		]
@@ -252,6 +288,15 @@
 		]
 	},
 	{
+		"project": "github.com/russross/blackfriday",
+		"licenses": [
+			{
+				"type": "BSD 2-clause \"Simplified\" License",
+				"confidence": 0.9626168224299065
+			}
+		]
+	},
+	{
 		"project": "github.com/sirupsen/logrus",
 		"licenses": [
 			{
@@ -310,24 +355,6 @@
 		"licenses": [
 			{
 				"type": "MIT License",
-				"confidence": 1
-			}
-		]
-	},
-	{
-		"project": "go.etcd.io/bbolt",
-		"licenses": [
-			{
-				"type": "MIT License",
-				"confidence": 1
-			}
-		]
-	},
-	{
-		"project": "go.etcd.io/etcd",
-		"licenses": [
-			{
-				"type": "Apache License 2.0",
 				"confidence": 1
 			}
 		]
@@ -405,7 +432,7 @@
 		]
 	},
 	{
-		"project": "google.golang.org/genproto",
+		"project": "google.golang.org/genproto/googleapis",
 		"licenses": [
 			{
 				"type": "Apache License 2.0",
@@ -447,6 +474,10 @@
 	{
 		"project": "sigs.k8s.io/yaml",
 		"licenses": [
+			{
+				"type": "Apache License 2.0",
+				"confidence": 1
+			},
 			{
 				"type": "BSD 3-clause \"New\" or \"Revised\" License",
 				"confidence": 1

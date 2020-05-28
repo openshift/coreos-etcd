@@ -22,13 +22,15 @@ import (
 	"strconv"
 	"strings"
 
-	"go.etcd.io/etcd/clientv3"
-	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/clientv3"
+	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
 
 	"github.com/spf13/cobra"
 )
 
-var txnInteractive bool
+var (
+	txnInteractive bool
+)
 
 // NewTxnCommand returns the cobra command for "txn".
 func NewTxnCommand() *cobra.Command {
@@ -44,7 +46,7 @@ func NewTxnCommand() *cobra.Command {
 // txnCommandFunc executes the "txn" command.
 func txnCommandFunc(cmd *cobra.Command, args []string) {
 	if len(args) != 0 {
-		ExitWithError(ExitBadArgs, fmt.Errorf("txn command does not accept argument"))
+		ExitWithError(ExitBadArgs, fmt.Errorf("txn command does not accept argument."))
 	}
 
 	reader := bufio.NewReader(os.Stdin)
@@ -127,17 +129,17 @@ func parseRequestUnion(line string) (*clientv3.Op, error) {
 
 	put := NewPutCommand()
 	put.Run = func(cmd *cobra.Command, args []string) {
-		key, value, opts := getPutOp(args)
+		key, value, opts := getPutOp(cmd, args)
 		opc <- clientv3.OpPut(key, value, opts...)
 	}
 	get := NewGetCommand()
 	get.Run = func(cmd *cobra.Command, args []string) {
-		key, opts := getGetOp(args)
+		key, opts := getGetOp(cmd, args)
 		opc <- clientv3.OpGet(key, opts...)
 	}
 	del := NewDelCommand()
 	del.Run = func(cmd *cobra.Command, args []string) {
-		key, opts := getDelOp(args)
+		key, opts := getDelOp(cmd, args)
 		opc <- clientv3.OpDelete(key, opts...)
 	}
 	cmds := &cobra.Command{SilenceErrors: true}

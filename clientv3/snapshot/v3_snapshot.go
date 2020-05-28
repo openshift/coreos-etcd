@@ -28,23 +28,22 @@ import (
 	"strings"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/etcdserver"
-	"go.etcd.io/etcd/etcdserver/api/membership"
-	"go.etcd.io/etcd/etcdserver/api/snap"
-	"go.etcd.io/etcd/etcdserver/api/v2store"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/lease"
-	"go.etcd.io/etcd/mvcc"
-	"go.etcd.io/etcd/mvcc/backend"
-	"go.etcd.io/etcd/pkg/fileutil"
-	"go.etcd.io/etcd/pkg/traceutil"
-	"go.etcd.io/etcd/pkg/types"
-	"go.etcd.io/etcd/raft"
-	"go.etcd.io/etcd/raft/raftpb"
-	"go.etcd.io/etcd/wal"
-	"go.etcd.io/etcd/wal/walpb"
+	bolt "github.com/coreos/bbolt"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/etcdserver"
+	"github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/etcdserver/membership"
+	"github.com/coreos/etcd/lease"
+	"github.com/coreos/etcd/mvcc"
+	"github.com/coreos/etcd/mvcc/backend"
+	"github.com/coreos/etcd/pkg/fileutil"
+	"github.com/coreos/etcd/pkg/types"
+	"github.com/coreos/etcd/raft"
+	"github.com/coreos/etcd/raft/raftpb"
+	"github.com/coreos/etcd/snap"
+	"github.com/coreos/etcd/store"
+	"github.com/coreos/etcd/wal"
+	"github.com/coreos/etcd/wal/walpb"
 	"go.uber.org/zap"
 )
 
@@ -248,7 +247,6 @@ func (s *v3Manager) Restore(cfg RestoreConfig) error {
 	}
 
 	srv := etcdserver.ServerConfig{
-		Logger:              s.lg,
 		Name:                cfg.Name,
 		PeerURLs:            pURLs,
 		InitialPeerURLsMap:  ics,
@@ -258,7 +256,7 @@ func (s *v3Manager) Restore(cfg RestoreConfig) error {
 		return err
 	}
 
-	s.cl, err = membership.NewClusterFromURLsMap(s.lg, cfg.InitialClusterToken, ics)
+	s.cl, err = membership.NewClusterFromURLsMap(cfg.InitialClusterToken, ics)
 	if err != nil {
 		return err
 	}
@@ -382,10 +380,10 @@ func (s *v3Manager) saveDB() error {
 	be := backend.NewDefaultBackend(dbpath)
 
 	// a lessor never timeouts leases
-	lessor := lease.NewLessor(s.lg, be, lease.LessorConfig{MinLeaseTTL: math.MaxInt64})
+	lessor := lease.NewLessor(be, math.MaxInt64)
 
-	mvs := mvcc.NewStore(s.lg, be, lessor, (*initIndex)(&commit), mvcc.StoreConfig{CompactionBatchLimit: math.MaxInt32})
-	txn := mvs.Write(traceutil.TODO())
+	mvs := mvcc.NewStore(be, lessor, (*initIndex)(&commit))
+	txn := mvs.Write()
 	btx := be.BatchTx()
 	del := func(k, v []byte) error {
 		txn.DeleteRange(k, nil)
@@ -415,7 +413,7 @@ func (s *v3Manager) saveWALAndSnap() error {
 	}
 
 	// add members again to persist them to the store we create.
-	st := v2store.New(etcdserver.StoreClusterPrefix, etcdserver.StoreKeysPrefix)
+	st := store.New(etcdserver.StoreClusterPrefix, etcdserver.StoreKeysPrefix)
 	s.cl.SetStore(st)
 	for _, m := range s.cl.Members() {
 		s.cl.AddMember(m)
@@ -427,7 +425,7 @@ func (s *v3Manager) saveWALAndSnap() error {
 	if merr != nil {
 		return merr
 	}
-	w, walerr := wal.Create(s.lg, s.walDir, metadata)
+	w, walerr := wal.Create(s.walDir, metadata)
 	if walerr != nil {
 		return walerr
 	}
@@ -482,11 +480,11 @@ func (s *v3Manager) saveWALAndSnap() error {
 			Index: commit,
 			Term:  term,
 			ConfState: raftpb.ConfState{
-				Voters: nodeIDs,
+				Nodes: nodeIDs,
 			},
 		},
 	}
-	sn := snap.New(s.lg, s.snapDir)
+	sn := snap.New(s.snapDir)
 	if err := sn.SaveSnap(raftSnap); err != nil {
 		return err
 	}

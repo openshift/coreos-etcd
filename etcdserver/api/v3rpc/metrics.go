@@ -30,29 +30,9 @@ var (
 		Name:      "client_grpc_received_bytes_total",
 		Help:      "The total number of bytes received from grpc clients.",
 	})
-
-	streamFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "etcd",
-		Subsystem: "network",
-		Name:      "server_stream_failures_total",
-		Help:      "The total number of stream failures from the local server.",
-	},
-		[]string{"Type", "API"},
-	)
-
-	clientRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "etcd",
-		Subsystem: "server",
-		Name:      "client_requests_total",
-		Help:      "The total number of client requests per client version.",
-	},
-		[]string{"type", "client_api_version"},
-	)
 )
 
 func init() {
 	prometheus.MustRegister(sentBytes)
 	prometheus.MustRegister(receivedBytes)
-	prometheus.MustRegister(streamFailures)
-	prometheus.MustRegister(clientRequests)
 }

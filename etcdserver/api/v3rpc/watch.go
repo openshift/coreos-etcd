@@ -17,46 +17,37 @@ package v3rpc
 import (
 	"context"
 	"io"
-	"math/rand"
 	"sync"
 	"time"
 
-	"go.etcd.io/etcd/auth"
-	"go.etcd.io/etcd/etcdserver"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/mvcc"
-	"go.etcd.io/etcd/mvcc/mvccpb"
-
-	"go.uber.org/zap"
+	"github.com/coreos/etcd/auth"
+	"github.com/coreos/etcd/etcdserver"
+	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/mvcc"
+	"github.com/coreos/etcd/mvcc/mvccpb"
 )
 
 type watchServer struct {
-	lg *zap.Logger
-
 	clusterID int64
 	memberID  int64
 
 	maxRequestBytes int
 
-	sg        etcdserver.RaftStatusGetter
+	raftTimer etcdserver.RaftTimer
 	watchable mvcc.WatchableKV
-	ag        AuthGetter
+
+	ag AuthGetter
 }
 
-// NewWatchServer returns a new watch server.
 func NewWatchServer(s *etcdserver.EtcdServer) pb.WatchServer {
 	return &watchServer{
-		lg: s.Cfg.Logger,
-
-		clusterID: int64(s.Cluster().ID()),
-		memberID:  int64(s.ID()),
-
+		clusterID:       int64(s.Cluster().ID()),
+		memberID:        int64(s.ID()),
 		maxRequestBytes: int(s.Cfg.MaxRequestBytes + grpcOverheadBytes),
-
-		sg:        s,
-		watchable: s.Watchable(),
-		ag:        s,
+		raftTimer:       s,
+		watchable:       s.Watchable(),
+		ag:              s,
 	}
 }
 
@@ -68,61 +59,52 @@ var (
 	progressReportIntervalMu sync.RWMutex
 )
 
-// GetProgressReportInterval returns the current progress report interval (for testing).
 func GetProgressReportInterval() time.Duration {
 	progressReportIntervalMu.RLock()
-	interval := progressReportInterval
-	progressReportIntervalMu.RUnlock()
-
-	// add rand(1/10*progressReportInterval) as jitter so that etcdserver will not
-	// send progress notifications to watchers around the same time even when watchers
-	// are created around the same time (which is common when a client restarts itself).
-	jitter := time.Duration(rand.Int63n(int64(interval) / 10))
-
-	return interval + jitter
+	defer progressReportIntervalMu.RUnlock()
+	return progressReportInterval
 }
 
-// SetProgressReportInterval updates the current progress report interval (for testing).
 func SetProgressReportInterval(newTimeout time.Duration) {
 	progressReportIntervalMu.Lock()
+	defer progressReportIntervalMu.Unlock()
 	progressReportInterval = newTimeout
-	progressReportIntervalMu.Unlock()
 }
 
-// We send ctrl response inside the read loop. We do not want
-// send to block read, but we still want ctrl response we sent to
-// be serialized. Thus we use a buffered chan to solve the problem.
-// A small buffer should be OK for most cases, since we expect the
-// ctrl requests are infrequent.
-const ctrlStreamBufLen = 16
+const (
+	// We send ctrl response inside the read loop. We do not want
+	// send to block read, but we still want ctrl response we sent to
+	// be serialized. Thus we use a buffered chan to solve the problem.
+	// A small buffer should be OK for most cases, since we expect the
+	// ctrl requests are infrequent.
+	ctrlStreamBufLen = 16
+)
 
 // serverWatchStream is an etcd server side stream. It receives requests
 // from client side gRPC stream. It receives watch events from mvcc.WatchStream,
 // and creates responses that forwarded to gRPC stream.
 // It also forwards control message like watch created and canceled.
 type serverWatchStream struct {
-	lg *zap.Logger
-
 	clusterID int64
 	memberID  int64
 
 	maxRequestBytes int
 
-	sg        etcdserver.RaftStatusGetter
+	raftTimer etcdserver.RaftTimer
+
 	watchable mvcc.WatchableKV
-	ag        AuthGetter
 
 	gRPCStream  pb.Watch_WatchServer
 	watchStream mvcc.WatchStream
 	ctrlStream  chan *pb.WatchResponse
 
-	// mu protects progress, prevKV, fragment
+	// mu protects progress, prevKV
 	mu sync.RWMutex
-	// tracks the watchID that stream might need to send progress to
+	// progress tracks the watchID that stream might need to send
+	// progress to.
 	// TODO: combine progress and prevKV into a single struct?
 	progress map[mvcc.WatchID]bool
-	// record watch IDs that need return previous key-value pair
-	prevKV map[mvcc.WatchID]bool
+	prevKV   map[mvcc.WatchID]bool
 	// records fragmented watch IDs
 	fragment map[mvcc.WatchID]bool
 
@@ -131,31 +113,31 @@ type serverWatchStream struct {
 
 	// wg waits for the send loop to complete
 	wg sync.WaitGroup
+
+	ag AuthGetter
 }
 
 func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 	sws := serverWatchStream{
-		lg: ws.lg,
-
 		clusterID: ws.clusterID,
 		memberID:  ws.memberID,
 
 		maxRequestBytes: ws.maxRequestBytes,
 
-		sg:        ws.sg,
+		raftTimer: ws.raftTimer,
+
 		watchable: ws.watchable,
-		ag:        ws.ag,
 
 		gRPCStream:  stream,
 		watchStream: ws.watchable.NewWatchStream(),
 		// chan for sending control response like watcher created and canceled.
 		ctrlStream: make(chan *pb.WatchResponse, ctrlStreamBufLen),
+		progress:   make(map[mvcc.WatchID]bool),
+		prevKV:     make(map[mvcc.WatchID]bool),
+		fragment:   make(map[mvcc.WatchID]bool),
+		closec:     make(chan struct{}),
 
-		progress: make(map[mvcc.WatchID]bool),
-		prevKV:   make(map[mvcc.WatchID]bool),
-		fragment: make(map[mvcc.WatchID]bool),
-
-		closec: make(chan struct{}),
+		ag: ws.ag,
 	}
 
 	sws.wg.Add(1)
@@ -172,27 +154,16 @@ func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 	go func() {
 		if rerr := sws.recvLoop(); rerr != nil {
 			if isClientCtxErr(stream.Context().Err(), rerr) {
-				if sws.lg != nil {
-					sws.lg.Debug("failed to receive watch request from gRPC stream", zap.Error(rerr))
-				} else {
-					plog.Debugf("failed to receive watch request from gRPC stream (%q)", rerr.Error())
-				}
+				plog.Debugf("failed to receive watch request from gRPC stream (%q)", rerr.Error())
 			} else {
-				if sws.lg != nil {
-					sws.lg.Warn("failed to receive watch request from gRPC stream", zap.Error(rerr))
-				} else {
-					plog.Warningf("failed to receive watch request from gRPC stream (%q)", rerr.Error())
-				}
-				streamFailures.WithLabelValues("receive", "watch").Inc()
+				plog.Warningf("failed to receive watch request from gRPC stream (%q)", rerr.Error())
 			}
 			errc <- rerr
 		}
 	}()
-
 	select {
 	case err = <-errc:
 		close(sws.ctrlStream)
-
 	case <-stream.Context().Done():
 		err = stream.Context().Err()
 		// the only server-side cancellation is noleader for now.
@@ -200,7 +171,6 @@ func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 			err = rpctypes.ErrGRPCNoLeader
 		}
 	}
-
 	sws.close()
 	return err
 }
@@ -214,6 +184,7 @@ func (sws *serverWatchStream) isWatchPermitted(wcr *pb.WatchCreateRequest) bool 
 		// if auth is enabled, IsRangePermitted() can cause an error
 		authInfo = &auth.AuthInfo{}
 	}
+
 	return sws.ag.AuthStore().IsRangePermitted(authInfo, wcr.Key, wcr.RangeEnd) == nil
 }
 
@@ -251,7 +222,7 @@ func (sws *serverWatchStream) recvLoop() error {
 			if !sws.isWatchPermitted(creq) {
 				wr := &pb.WatchResponse{
 					Header:       sws.newResponseHeader(sws.watchStream.Rev()),
-					WatchId:      creq.WatchId,
+					WatchId:      -1,
 					Canceled:     true,
 					Created:      true,
 					CancelReason: rpctypes.ErrGRPCPermissionDenied.Error(),
@@ -271,8 +242,8 @@ func (sws *serverWatchStream) recvLoop() error {
 			if rev == 0 {
 				rev = wsrev + 1
 			}
-			id, err := sws.watchStream.Watch(mvcc.WatchID(creq.WatchId), creq.Key, creq.RangeEnd, rev, filters...)
-			if err == nil {
+			id := sws.watchStream.Watch(creq.Key, creq.RangeEnd, rev, filters...)
+			if id != -1 {
 				sws.mu.Lock()
 				if creq.ProgressNotify {
 					sws.progress[id] = true
@@ -289,17 +260,13 @@ func (sws *serverWatchStream) recvLoop() error {
 				Header:   sws.newResponseHeader(wsrev),
 				WatchId:  int64(id),
 				Created:  true,
-				Canceled: err != nil,
-			}
-			if err != nil {
-				wr.CancelReason = err.Error()
+				Canceled: id == -1,
 			}
 			select {
 			case sws.ctrlStream <- wr:
 			case <-sws.closec:
 				return nil
 			}
-
 		case *pb.WatchRequest_CancelRequest:
 			if uv.CancelRequest != nil {
 				id := uv.CancelRequest.WatchId
@@ -372,6 +339,7 @@ func (sws *serverWatchStream) sendLoop() {
 			sws.mu.RUnlock()
 			for i := range evs {
 				events[i] = &evs[i]
+
 				if needPrevKV {
 					opt := mvcc.RangeOptions{Rev: evs[i].Kv.ModRevision - 1}
 					r, err := sws.watchable.Range(evs[i].Kv.Key, nil, opt)
@@ -390,7 +358,7 @@ func (sws *serverWatchStream) sendLoop() {
 				Canceled:        canceled,
 			}
 
-			if _, okID := ids[wresp.WatchID]; !okID {
+			if _, hasId := ids[wresp.WatchID]; !hasId {
 				// buffer if id not yet announced
 				wrs := append(pending[wresp.WatchID], wr)
 				pending[wresp.WatchID] = wrs
@@ -412,18 +380,9 @@ func (sws *serverWatchStream) sendLoop() {
 
 			if serr != nil {
 				if isClientCtxErr(sws.gRPCStream.Context().Err(), serr) {
-					if sws.lg != nil {
-						sws.lg.Debug("failed to send watch response to gRPC stream", zap.Error(serr))
-					} else {
-						plog.Debugf("failed to send watch response to gRPC stream (%q)", serr.Error())
-					}
+					plog.Debugf("failed to send watch response to gRPC stream (%q)", serr.Error())
 				} else {
-					if sws.lg != nil {
-						sws.lg.Warn("failed to send watch response to gRPC stream", zap.Error(serr))
-					} else {
-						plog.Warningf("failed to send watch response to gRPC stream (%q)", serr.Error())
-					}
-					streamFailures.WithLabelValues("send", "watch").Inc()
+					plog.Warningf("failed to send watch response to gRPC stream (%q)", serr.Error())
 				}
 				return
 			}
@@ -442,18 +401,9 @@ func (sws *serverWatchStream) sendLoop() {
 
 			if err := sws.gRPCStream.Send(c); err != nil {
 				if isClientCtxErr(sws.gRPCStream.Context().Err(), err) {
-					if sws.lg != nil {
-						sws.lg.Debug("failed to send watch control response to gRPC stream", zap.Error(err))
-					} else {
-						plog.Debugf("failed to send watch control response to gRPC stream (%q)", err.Error())
-					}
+					plog.Debugf("failed to send watch control response to gRPC stream (%q)", err.Error())
 				} else {
-					if sws.lg != nil {
-						sws.lg.Warn("failed to send watch control response to gRPC stream", zap.Error(err))
-					} else {
-						plog.Warningf("failed to send watch control response to gRPC stream (%q)", err.Error())
-					}
-					streamFailures.WithLabelValues("send", "watch").Inc()
+					plog.Warningf("failed to send watch control response to gRPC stream (%q)", err.Error())
 				}
 				return
 			}
@@ -471,25 +421,15 @@ func (sws *serverWatchStream) sendLoop() {
 					mvcc.ReportEventReceived(len(v.Events))
 					if err := sws.gRPCStream.Send(v); err != nil {
 						if isClientCtxErr(sws.gRPCStream.Context().Err(), err) {
-							if sws.lg != nil {
-								sws.lg.Debug("failed to send pending watch response to gRPC stream", zap.Error(err))
-							} else {
-								plog.Debugf("failed to send pending watch response to gRPC stream (%q)", err.Error())
-							}
+							plog.Debugf("failed to send pending watch response to gRPC stream (%q)", err.Error())
 						} else {
-							if sws.lg != nil {
-								sws.lg.Warn("failed to send pending watch response to gRPC stream", zap.Error(err))
-							} else {
-								plog.Warningf("failed to send pending watch response to gRPC stream (%q)", err.Error())
-							}
-							streamFailures.WithLabelValues("send", "watch").Inc()
+							plog.Warningf("failed to send pending watch response to gRPC stream (%q)", err.Error())
 						}
 						return
 					}
 				}
 				delete(pending, wid)
 			}
-
 		case <-progressTicker.C:
 			sws.mu.Lock()
 			for id, ok := range sws.progress {
@@ -499,7 +439,6 @@ func (sws *serverWatchStream) sendLoop() {
 				sws.progress[id] = true
 			}
 			sws.mu.Unlock()
-
 		case <-sws.closec:
 			return
 		}
@@ -556,7 +495,7 @@ func (sws *serverWatchStream) newResponseHeader(rev int64) *pb.ResponseHeader {
 		ClusterId: uint64(sws.clusterID),
 		MemberId:  uint64(sws.memberID),
 		Revision:  rev,
-		RaftTerm:  sws.sg.Term(),
+		RaftTerm:  sws.raftTimer.Term(),
 	}
 }
 
@@ -568,7 +507,6 @@ func filterNoPut(e mvccpb.Event) bool {
 	return e.Type == mvccpb.PUT
 }
 
-// FiltersFromRequest returns "mvcc.FilterFunc" from a given watch create request.
 func FiltersFromRequest(creq *pb.WatchCreateRequest) []mvcc.FilterFunc {
 	filters := make([]mvcc.FilterFunc, 0, len(creq.Filters))
 	for _, ft := range creq.Filters {

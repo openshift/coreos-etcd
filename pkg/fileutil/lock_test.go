@@ -61,11 +61,11 @@ func TestLockAndUnlock(t *testing.T) {
 	go func() {
 		bl, blerr := LockFile(f.Name(), os.O_WRONLY, PrivateFileMode)
 		if blerr != nil {
-			t.Error(blerr)
+			t.Fatal(blerr)
 		}
 		locked <- struct{}{}
 		if blerr = bl.Close(); blerr != nil {
-			t.Error(blerr)
+			t.Fatal(blerr)
 		}
 	}()
 

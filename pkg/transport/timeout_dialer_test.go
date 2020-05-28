@@ -95,7 +95,7 @@ func (ts *testBlockingServer) Start(t *testing.T) {
 	for i := 0; i < ts.n; i++ {
 		conn, err := ts.ln.Accept()
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		defer conn.Close()
 	}

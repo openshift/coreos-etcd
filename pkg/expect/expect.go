@@ -25,7 +25,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/creack/pty"
+	"github.com/kr/pty"
 )
 
 type ExpectProcess struct {

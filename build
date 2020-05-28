@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # set some environment variables
-ORG_PATH="go.etcd.io"
+ORG_PATH="github.com/coreos"
 REPO_PATH="${ORG_PATH}/etcd"
 
 GIT_SHA=$(git rev-parse --short HEAD || echo "GitNotFound")
@@ -34,10 +34,10 @@ etcd_setup_gopath() {
 		GOPATH=":$GOPATH"
 	fi
 	rm -rf "${etcdGOPATH:?}/"
-	mkdir -p "${etcdGOPATH}/vendor" "${etcdGOPATH}/etcd_src/src/go.etcd.io"
+	mkdir -p "${etcdGOPATH}/vendor" "${etcdGOPATH}/etcd_src/src/github.com/coreos"
 	export GOPATH=${etcdGOPATH}/vendor:${etcdGOPATH}/etcd_src${GOPATH}
 	ln -s "${CDIR}/vendor" "${etcdGOPATH}/vendor/src"
-	ln -s "${CDIR}" "${etcdGOPATH}/etcd_src/src/go.etcd.io/etcd"
+	ln -s "${CDIR}" "${etcdGOPATH}/etcd_src/src/github.com/coreos/etcd"
 }
 
 toggle_failpoints_default() {
@@ -75,17 +75,13 @@ openshift_tools_build() {
 	CGO_ENABLED=0 go build $GO_BUILD_FLAGS \
 		-installsuffix cgo \
 		-ldflags "$GO_LDFLAGS" \
-		-o "${out}/discover-etcd-initial-cluster" "go.etcd.io/etcd/openshift-tools/discover-etcd-initial-cluster" || return
+		-o "${out}/discover-etcd-initial-cluster" "github.com/coreos/etcd/openshift-tools/discover-etcd-initial-cluster" || return
 }
 
 tools_build() {
 	out="bin"
 	if [[ -n "${BINDIR}" ]]; then out="${BINDIR}"; fi
-	tools_path="tools/benchmark
-	tools/etcd-dump-db
-	tools/etcd-dump-logs
-	tools/local-tester/bridge
-	functional/cmd/etcd-agent
+	tools_path="functional/cmd/etcd-agent
 	functional/cmd/etcd-proxy
 	functional/cmd/etcd-runner
 	functional/cmd/etcd-tester"

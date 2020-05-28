@@ -22,11 +22,11 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/integration"
-	"go.etcd.io/etcd/pkg/testutil"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/integration"
+	"github.com/coreos/etcd/pkg/testutil"
 	"google.golang.org/grpc"
 )
 
@@ -228,7 +228,10 @@ func testBalancerUnderNetworkPartitionWatch(t *testing.T, isolateLeader bool) {
 	}
 
 	// pin eps[target]
-	watchCli, err := clientv3.New(clientv3.Config{Endpoints: []string{eps[target]}})
+	watchCli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{eps[target]},
+		DialOptions: []grpc.DialOption{grpc.WithBlock()},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +309,7 @@ func TestDropReadUnderNetworkPartition(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	_, err = kvc.Get(ctx, "a")
 	cancel()
-	if err != rpctypes.ErrLeaderChanged {
+	if err.Error() != rpctypes.ErrLeaderChanged.Error() {
 		t.Fatalf("expected %v, got %v", rpctypes.ErrLeaderChanged, err)
 	}
 

@@ -994,13 +994,12 @@ func TestHTTPKeysAPIWatcherAction(t *testing.T) {
 	}
 
 	for i, tt := range tests {
-		testError := errors.New("fail!")
 		kAPI := &httpKeysAPI{
-			client: &staticHTTPClient{err: testError},
+			client: &staticHTTPClient{err: errors.New("fail!")},
 		}
 
 		want := &httpWatcher{
-			client:   &staticHTTPClient{err: testError},
+			client:   &staticHTTPClient{err: errors.New("fail!")},
 			nextWait: tt.want,
 		}
 

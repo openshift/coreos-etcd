@@ -22,15 +22,14 @@ import (
 	"sort"
 	"testing"
 
-	"go.etcd.io/etcd/etcdserver"
-	"go.etcd.io/etcd/etcdserver/api/membership"
-	"go.etcd.io/etcd/etcdserver/api/v2error"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/pkg/types"
-	"go.etcd.io/etcd/raft/raftpb"
+	etcdErr "github.com/coreos/etcd/error"
+	"github.com/coreos/etcd/etcdserver"
+	"github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/etcdserver/membership"
+	"github.com/coreos/etcd/pkg/types"
+	"github.com/coreos/etcd/raft/raftpb"
 
 	"github.com/coreos/go-semver/semver"
-	"go.uber.org/zap"
 )
 
 type fakeCluster struct {
@@ -74,15 +73,12 @@ func (fs *errServer) RemoveMember(ctx context.Context, id uint64) ([]*membership
 func (fs *errServer) UpdateMember(ctx context.Context, m membership.Member) ([]*membership.Member, error) {
 	return nil, fs.err
 }
-func (fs *errServer) PromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
-	return nil, fs.err
-}
 
 func TestWriteError(t *testing.T) {
 	// nil error should not panic
 	rec := httptest.NewRecorder()
 	r := new(http.Request)
-	writeError(zap.NewExample(), rec, r, nil)
+	writeError(rec, r, nil)
 	h := rec.Header()
 	if len(h) > 0 {
 		t.Fatalf("unexpected non-empty headers: %#v", h)
@@ -98,12 +94,12 @@ func TestWriteError(t *testing.T) {
 		wi    string
 	}{
 		{
-			v2error.NewError(v2error.EcodeKeyNotFound, "/foo/bar", 123),
+			etcdErr.NewError(etcdErr.EcodeKeyNotFound, "/foo/bar", 123),
 			http.StatusNotFound,
 			"123",
 		},
 		{
-			v2error.NewError(v2error.EcodeTestFailed, "/foo/bar", 456),
+			etcdErr.NewError(etcdErr.EcodeTestFailed, "/foo/bar", 456),
 			http.StatusPreconditionFailed,
 			"456",
 		},
@@ -115,7 +111,7 @@ func TestWriteError(t *testing.T) {
 
 	for i, tt := range tests {
 		rw := httptest.NewRecorder()
-		writeError(zap.NewExample(), rw, r, tt.err)
+		writeError(rw, r, tt.err)
 		if code := rw.Code; code != tt.wcode {
 			t.Errorf("#%d: code=%d, want %d", i, code, tt.wcode)
 		}

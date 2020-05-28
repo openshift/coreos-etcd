@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/etcdserver/etcdserverpb"
 )
 
 func TestCtlV3MemberList(t *testing.T)          { testCtl(t, memberListTest) }
@@ -59,10 +59,9 @@ func TestCtlV3MemberAddClientTLS(t *testing.T) { testCtl(t, memberAddTest, withC
 func TestCtlV3MemberAddClientAutoTLS(t *testing.T) {
 	testCtl(t, memberAddTest, withCfg(configClientAutoTLS))
 }
-func TestCtlV3MemberAddPeerTLS(t *testing.T)    { testCtl(t, memberAddTest, withCfg(configPeerTLS)) }
-func TestCtlV3MemberAddForLearner(t *testing.T) { testCtl(t, memberAddForLearnerTest) }
-func TestCtlV3MemberUpdate(t *testing.T)        { testCtl(t, memberUpdateTest) }
-func TestCtlV3MemberUpdateNoTLS(t *testing.T)   { testCtl(t, memberUpdateTest, withCfg(configNoTLS)) }
+func TestCtlV3MemberAddPeerTLS(t *testing.T)  { testCtl(t, memberAddTest, withCfg(configPeerTLS)) }
+func TestCtlV3MemberUpdate(t *testing.T)      { testCtl(t, memberUpdateTest) }
+func TestCtlV3MemberUpdateNoTLS(t *testing.T) { testCtl(t, memberUpdateTest, withCfg(configNoTLS)) }
 func TestCtlV3MemberUpdateClientTLS(t *testing.T) {
 	testCtl(t, memberUpdateTest, withCfg(configClientTLS))
 }
@@ -124,12 +123,6 @@ func ctlV3MemberRemove(cx ctlCtx, ep, memberID, clusterID string) error {
 
 func memberAddTest(cx ctlCtx) {
 	if err := ctlV3MemberAdd(cx, fmt.Sprintf("http://localhost:%d", etcdProcessBasePort+11), false); err != nil {
-		cx.t.Fatal(err)
-	}
-}
-
-func memberAddForLearnerTest(cx ctlCtx) {
-	if err := ctlV3MemberAdd(cx, fmt.Sprintf("http://localhost:%d", etcdProcessBasePort+11), true); err != nil {
 		cx.t.Fatal(err)
 	}
 }

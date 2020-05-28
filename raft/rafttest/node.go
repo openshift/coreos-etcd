@@ -17,12 +17,11 @@ package rafttest
 import (
 	"context"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 
-	"go.etcd.io/etcd/raft"
-	"go.etcd.io/etcd/raft/raftpb"
+	"github.com/coreos/etcd/raft"
+	"github.com/coreos/etcd/raft/raftpb"
 )
 
 type node struct {
@@ -42,13 +41,12 @@ type node struct {
 func startNode(id uint64, peers []raft.Peer, iface iface) *node {
 	st := raft.NewMemoryStorage()
 	c := &raft.Config{
-		ID:                        id,
-		ElectionTick:              10,
-		HeartbeatTick:             1,
-		Storage:                   st,
-		MaxSizePerMsg:             1024 * 1024,
-		MaxInflightMsgs:           256,
-		MaxUncommittedEntriesSize: 1 << 30,
+		ID:              id,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
+		Storage:         st,
+		MaxSizePerMsg:   1024 * 1024,
+		MaxInflightMsgs: 256,
 	}
 	rn := raft.StartNode(c, peers)
 	n := &node{
@@ -80,14 +78,9 @@ func (n *node) start() {
 				}
 				n.storage.Append(rd.Entries)
 				time.Sleep(time.Millisecond)
-
-				// simulate async send, more like real world...
+				// TODO: make send async, more like real world...
 				for _, m := range rd.Messages {
-					mlocal := m
-					go func() {
-						time.Sleep(time.Duration(rand.Int63n(10)) * time.Millisecond)
-						n.iface.send(mlocal)
-					}()
+					n.iface.send(m)
 				}
 				n.Advance()
 			case m := <-n.iface.recv():
@@ -132,13 +125,12 @@ func (n *node) restart() {
 	// wait for the shutdown
 	<-n.stopc
 	c := &raft.Config{
-		ID:                        n.id,
-		ElectionTick:              10,
-		HeartbeatTick:             1,
-		Storage:                   n.storage,
-		MaxSizePerMsg:             1024 * 1024,
-		MaxInflightMsgs:           256,
-		MaxUncommittedEntriesSize: 1 << 30,
+		ID:              n.id,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
+		Storage:         n.storage,
+		MaxSizePerMsg:   1024 * 1024,
+		MaxInflightMsgs: 256,
 	}
 	n.Node = raft.RestartNode(c)
 	n.start()

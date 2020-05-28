@@ -13,7 +13,7 @@
         "links": [
 
         ],
-        "refresh": "10s",
+        "refresh": false,
         "rows": [
             {
                 "collapse": false,

@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"go.etcd.io/etcd/raft/raftpb"
+	"github.com/coreos/etcd/raft/raftpb"
 )
 
 // Handler for a http based key-value store backed by raft
@@ -31,7 +31,6 @@ type httpKVAPI struct {
 
 func (h *httpKVAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := r.RequestURI
-	defer r.Body.Close()
 	switch {
 	case r.Method == "PUT":
 		v, err := ioutil.ReadAll(r.Body)

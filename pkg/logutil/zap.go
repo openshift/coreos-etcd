@@ -53,10 +53,13 @@ var DefaultZapLoggerConfig = zap.Config{
 	ErrorOutputPaths: []string{"stderr"},
 }
 
-// MergeOutputPaths merges logging output paths, resolving conflicts.
-func MergeOutputPaths(cfg zap.Config) zap.Config {
+// AddOutputPaths adds output paths to the existing output paths, resolving conflicts.
+func AddOutputPaths(cfg zap.Config, outputPaths, errorOutputPaths []string) zap.Config {
 	outputs := make(map[string]struct{})
 	for _, v := range cfg.OutputPaths {
+		outputs[v] = struct{}{}
+	}
+	for _, v := range outputPaths {
 		outputs[v] = struct{}{}
 	}
 	outputSlice := make([]string, 0)
@@ -73,6 +76,9 @@ func MergeOutputPaths(cfg zap.Config) zap.Config {
 
 	errOutputs := make(map[string]struct{})
 	for _, v := range cfg.ErrorOutputPaths {
+		errOutputs[v] = struct{}{}
+	}
+	for _, v := range errorOutputPaths {
 		errOutputs[v] = struct{}{}
 	}
 	errOutputSlice := make([]string, 0)

@@ -19,10 +19,9 @@ import (
 	"os"
 	"strings"
 
-	v3 "go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/clientv3/snapshot"
-	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/pkg/types"
+	v3 "github.com/coreos/etcd/clientv3"
+	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/pkg/types"
 )
 
 type simplePrinter struct {
@@ -86,11 +85,11 @@ func (s *simplePrinter) Grant(resp v3.LeaseGrantResponse) {
 	fmt.Printf("lease %016x granted with TTL(%ds)\n", resp.ID, resp.TTL)
 }
 
-func (s *simplePrinter) Revoke(id v3.LeaseID, r v3.LeaseRevokeResponse) {
+func (p *simplePrinter) Revoke(id v3.LeaseID, r v3.LeaseRevokeResponse) {
 	fmt.Printf("lease %016x revoked\n", id)
 }
 
-func (s *simplePrinter) KeepAlive(resp v3.LeaseKeepAliveResponse) {
+func (p *simplePrinter) KeepAlive(resp v3.LeaseKeepAliveResponse) {
 	fmt.Printf("lease %016x keepalived with TTL(%d)\n", resp.ID, resp.TTL)
 }
 
@@ -136,10 +135,6 @@ func (s *simplePrinter) MemberUpdate(id uint64, r v3.MemberUpdateResponse) {
 	fmt.Printf("Member %16x updated in cluster %16x\n", id, r.Header.ClusterId)
 }
 
-func (s *simplePrinter) MemberPromote(id uint64, r v3.MemberPromoteResponse) {
-	fmt.Printf("Member %16x promoted in cluster %16x\n", id, r.Header.ClusterId)
-}
-
 func (s *simplePrinter) MemberList(resp v3.MemberListResponse) {
 	_, rows := makeMemberListTable(resp)
 	for _, row := range rows {
@@ -171,7 +166,7 @@ func (s *simplePrinter) EndpointHashKV(hashList []epHashKV) {
 	}
 }
 
-func (s *simplePrinter) DBStatus(ds snapshot.Status) {
+func (s *simplePrinter) DBStatus(ds dbstatus) {
 	_, rows := makeDBStatusTable(ds)
 	for _, row := range rows {
 		fmt.Println(strings.Join(row, ", "))
@@ -193,12 +188,12 @@ func (s *simplePrinter) RoleGet(role string, r v3.AuthRoleGetResponse) {
 	printRange := func(perm *v3.Permission) {
 		sKey := string(perm.Key)
 		sRangeEnd := string(perm.RangeEnd)
-		if sRangeEnd != "\x00" {
+		if strings.Compare(sRangeEnd, "\x00") != 0 {
 			fmt.Printf("\t[%s, %s)", sKey, sRangeEnd)
 		} else {
 			fmt.Printf("\t[%s, <open ended>", sKey)
 		}
-		if v3.GetPrefixRangeEnd(sKey) == sRangeEnd {
+		if strings.Compare(v3.GetPrefixRangeEnd(sKey), sRangeEnd) == 0 {
 			fmt.Printf(" (prefix %s)", sKey)
 		}
 		fmt.Printf("\n")
@@ -244,7 +239,7 @@ func (s *simplePrinter) RoleRevokePermission(role string, key string, end string
 		fmt.Printf("Permission of key %s is revoked from role %s\n", key, role)
 		return
 	}
-	if end != "\x00" {
+	if strings.Compare(end, "\x00") != 0 {
 		fmt.Printf("Permission of range [%s, %s) is revoked from role %s\n", key, end, role)
 	} else {
 		fmt.Printf("Permission of range [%s, <open ended> is revoked from role %s\n", key, role)

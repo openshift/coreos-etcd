@@ -20,10 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/lease"
-	"go.etcd.io/etcd/mvcc/backend"
-	"go.etcd.io/etcd/pkg/traceutil"
-	"go.uber.org/zap"
+	"github.com/coreos/etcd/lease"
+	"github.com/coreos/etcd/mvcc/backend"
 )
 
 func TestScheduleCompaction(t *testing.T) {
@@ -66,7 +64,7 @@ func TestScheduleCompaction(t *testing.T) {
 	}
 	for i, tt := range tests {
 		b, tmpPath := backend.NewDefaultTmpBackend()
-		s := NewStore(zap.NewExample(), b, &lease.FakeLessor{}, nil, StoreConfig{})
+		s := NewStore(b, &lease.FakeLessor{}, nil)
 		tx := s.b.BatchTx()
 
 		tx.Lock()
@@ -100,7 +98,7 @@ func TestScheduleCompaction(t *testing.T) {
 
 func TestCompactAllAndRestore(t *testing.T) {
 	b, tmpPath := backend.NewDefaultTmpBackend()
-	s0 := NewStore(zap.NewExample(), b, &lease.FakeLessor{}, nil, StoreConfig{})
+	s0 := NewStore(b, &lease.FakeLessor{}, nil)
 	defer os.Remove(tmpPath)
 
 	s0.Put([]byte("foo"), []byte("bar"), lease.NoLease)
@@ -110,7 +108,7 @@ func TestCompactAllAndRestore(t *testing.T) {
 
 	rev := s0.Rev()
 	// compact all keys
-	done, err := s0.Compact(traceutil.TODO(), rev)
+	done, err := s0.Compact(rev)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +124,7 @@ func TestCompactAllAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s1 := NewStore(zap.NewExample(), b, &lease.FakeLessor{}, nil, StoreConfig{})
+	s1 := NewStore(b, &lease.FakeLessor{}, nil)
 	if s1.Rev() != rev {
 		t.Errorf("rev = %v, want %v", s1.Rev(), rev)
 	}

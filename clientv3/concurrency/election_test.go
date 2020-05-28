@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/clientv3/concurrency"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3/concurrency"
 )
 
 func TestResumeElection(t *testing.T) {
@@ -34,8 +34,7 @@ func TestResumeElection(t *testing.T) {
 	}
 	defer cli.Close()
 
-	var s *concurrency.Session
-	s, err = concurrency.NewSession(cli)
+	s, err := concurrency.NewSession(cli)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,18 +42,17 @@ func TestResumeElection(t *testing.T) {
 
 	e := concurrency.NewElection(s, prefix)
 
-	// entire test should never take more than 10 seconds
+	// Entire test should never take more than 10 seconds
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	// become leader
-	if err = e.Campaign(ctx, "candidate1"); err != nil {
+	// Become leader
+	if err := e.Campaign(ctx, "candidate1"); err != nil {
 		t.Fatalf("Campaign() returned non nil err: %s", err)
 	}
 
-	// get the leadership details of the current election
-	var leader *clientv3.GetResponse
-	leader, err = e.Leader(ctx)
+	// Get the leadership details of the current election
+	leader, err := e.Leader(ctx)
 	if err != nil {
 		t.Fatalf("Leader() returned non nil err: %s", err)
 	}
@@ -83,34 +81,34 @@ func TestResumeElection(t *testing.T) {
 		}
 	}()
 
-	// wait until observe goroutine is running
+	// Wait until observe goroutine is running
 	<-respChan
 
-	// put some random data to generate a change event, this put should be
+	// Put some random data to generate a change event, this put should be
 	// ignored by Observe() because it is not under the election prefix.
 	_, err = cli.Put(ctx, "foo", "bar")
 	if err != nil {
 		t.Fatalf("Put('foo') returned non nil err: %s", err)
 	}
 
-	// resign as leader
+	// Resign as leader
 	if err := e.Resign(ctx); err != nil {
 		t.Fatalf("Resign() returned non nil err: %s", err)
 	}
 
-	// elect a different candidate
+	// Elect a different candidate
 	if err := e.Campaign(ctx, "candidate2"); err != nil {
 		t.Fatalf("Campaign() returned non nil err: %s", err)
 	}
 
-	// wait for observed leader change
+	// Wait for observed leader change
 	resp := <-respChan
 
 	kv := resp.Kvs[0]
 	if !strings.HasPrefix(string(kv.Key), prefix) {
-		t.Errorf("expected observed election to have prefix '%s' got %q", prefix, string(kv.Key))
+		t.Errorf("expected observed election to have prefix '%s' got '%s'", prefix, string(kv.Key))
 	}
 	if string(kv.Value) != "candidate2" {
-		t.Errorf("expected new leader to be 'candidate1' got %q", string(kv.Value))
+		t.Errorf("expected new leader to be 'candidate1' got '%s'", string(kv.Value))
 	}
 }

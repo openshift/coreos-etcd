@@ -1,4 +1,6 @@
-### etcd API Reference
+---
+title: etcd API Reference
+---
 
 
 This is a generated documentation. Please read the proto files for more.
@@ -11,14 +13,14 @@ This is a generated documentation. Please read the proto files for more.
 | AuthEnable | AuthEnableRequest | AuthEnableResponse | AuthEnable enables authentication. |
 | AuthDisable | AuthDisableRequest | AuthDisableResponse | AuthDisable disables authentication. |
 | Authenticate | AuthenticateRequest | AuthenticateResponse | Authenticate processes an authenticate request. |
-| UserAdd | AuthUserAddRequest | AuthUserAddResponse | UserAdd adds a new user. User name cannot be empty. |
+| UserAdd | AuthUserAddRequest | AuthUserAddResponse | UserAdd adds a new user. |
 | UserGet | AuthUserGetRequest | AuthUserGetResponse | UserGet gets detailed user information. |
 | UserList | AuthUserListRequest | AuthUserListResponse | UserList gets a list of all users. |
 | UserDelete | AuthUserDeleteRequest | AuthUserDeleteResponse | UserDelete deletes a specified user. |
 | UserChangePassword | AuthUserChangePasswordRequest | AuthUserChangePasswordResponse | UserChangePassword changes the password of a specified user. |
 | UserGrantRole | AuthUserGrantRoleRequest | AuthUserGrantRoleResponse | UserGrant grants a role to a specified user. |
 | UserRevokeRole | AuthUserRevokeRoleRequest | AuthUserRevokeRoleResponse | UserRevokeRole revokes a role of specified user. |
-| RoleAdd | AuthRoleAddRequest | AuthRoleAddResponse | RoleAdd adds a new role. Role name cannot be empty. |
+| RoleAdd | AuthRoleAddRequest | AuthRoleAddResponse | RoleAdd adds a new role. |
 | RoleGet | AuthRoleGetRequest | AuthRoleGetResponse | RoleGet gets detailed role information. |
 | RoleList | AuthRoleListRequest | AuthRoleListResponse | RoleList gets lists of all roles. |
 | RoleDelete | AuthRoleDeleteRequest | AuthRoleDeleteResponse | RoleDelete deletes a specified role. |
@@ -35,7 +37,6 @@ This is a generated documentation. Please read the proto files for more.
 | MemberRemove | MemberRemoveRequest | MemberRemoveResponse | MemberRemove removes an existing member from the cluster. |
 | MemberUpdate | MemberUpdateRequest | MemberUpdateResponse | MemberUpdate updates the member configuration. |
 | MemberList | MemberListRequest | MemberListResponse | MemberList lists all the members in the cluster. |
-| MemberPromote | MemberPromoteRequest | MemberPromoteResponse | MemberPromote promotes a member from raft learner (non-voting) to raft voting member. |
 
 
 
@@ -246,7 +247,6 @@ Empty field.
 | ----- | ----------- | ---- |
 | name |  | string |
 | password |  | string |
-| options |  | authpb.UserAddOptions |
 
 
 
@@ -609,7 +609,6 @@ Empty field.
 | name | name is the human-readable name of the member. If the member is not started, the name will be an empty string. | string |
 | peerURLs | peerURLs is the list of URLs the member exposes to the cluster for communication. | (slice of) string |
 | clientURLs | clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty. | (slice of) string |
-| isLearner | isLearner indicates if the member is raft learner. | bool |
 
 
 
@@ -618,7 +617,6 @@ Empty field.
 | Field | Description | Type |
 | ----- | ----------- | ---- |
 | peerURLs | peerURLs is the list of URLs the added member will use to communicate with the cluster. | (slice of) string |
-| isLearner | isLearner indicates if the added member is raft learner. | bool |
 
 
 
@@ -644,23 +642,6 @@ Empty field.
 | ----- | ----------- | ---- |
 | header |  | ResponseHeader |
 | members | members is a list of all members associated with the cluster. | (slice of) Member |
-
-
-
-##### message `MemberPromoteRequest` (etcdserver/etcdserverpb/rpc.proto)
-
-| Field | Description | Type |
-| ----- | ----------- | ---- |
-| ID | ID is the member ID of the member to promote. | uint64 |
-
-
-
-##### message `MemberPromoteResponse` (etcdserver/etcdserverpb/rpc.proto)
-
-| Field | Description | Type |
-| ----- | ----------- | ---- |
-| header |  | ResponseHeader |
-| members | members is a list of all members after promoting the member. | (slice of) Member |
 
 
 
@@ -838,7 +819,6 @@ Empty field.
 | raftAppliedIndex | raftAppliedIndex is the current raft applied index of the responding member. | uint64 |
 | errors | errors contains alarm/health information and status. | (slice of) string |
 | dbSizeInUse | dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. | int64 |
-| isLearner | isLearner indicates if the member is raft learner. | bool |
 
 
 
@@ -1002,15 +982,6 @@ User is a single entry in the bucket authUsers
 | name |  | bytes |
 | password |  | bytes |
 | roles |  | (slice of) string |
-| options |  | UserAddOptions |
-
-
-
-##### message `UserAddOptions` (auth/authpb/auth.proto)
-
-| Field | Description | Type |
-| ----- | ----------- | ---- |
-| no_password |  | bool |
 
 
 

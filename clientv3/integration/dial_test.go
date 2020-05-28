@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
-	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/integration"
-	"go.etcd.io/etcd/pkg/testutil"
-	"go.etcd.io/etcd/pkg/transport"
+	"github.com/coreos/etcd/clientv3"
+	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/integration"
+	"github.com/coreos/etcd/pkg/testutil"
+	"github.com/coreos/etcd/pkg/transport"
 	"google.golang.org/grpc"
 )
 
@@ -38,9 +38,9 @@ var (
 	}
 
 	testTLSInfoExpired = transport.TLSInfo{
-		KeyFile:        "../../integration/fixtures-expired/server.key.insecure",
-		CertFile:       "../../integration/fixtures-expired/server.crt",
-		TrustedCAFile:  "../../integration/fixtures-expired/ca.crt",
+		KeyFile:        "../../integration/fixtures-expired/server-key.pem",
+		CertFile:       "../../integration/fixtures-expired/server.pem",
+		TrustedCAFile:  "../../integration/fixtures-expired/etcd-root-ca.pem",
 		ClientCertAuth: true,
 	}
 )
@@ -155,7 +155,6 @@ func TestSwitchSetEndpoints(t *testing.T) {
 	clus.Members[0].InjectPartition(t, clus.Members[1:]...)
 
 	cli.SetEndpoints(eps...)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := cli.Get(ctx, "foo"); err != nil {

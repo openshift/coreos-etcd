@@ -24,8 +24,6 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func createSelfCert(hosts ...string) (*TLSInfo, func(), error) {
@@ -37,7 +35,7 @@ func createSelfCertEx(host string, additionalUsages ...x509.ExtKeyUsage) (*TLSIn
 	if terr != nil {
 		return nil, nil, terr
 	}
-	info, err := SelfCert(zap.NewExample(), d, []string{host + ":0"}, additionalUsages...)
+	info, err := SelfCert(d, []string{host + ":0"}, additionalUsages...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -119,7 +117,7 @@ func testNewListenerTLSInfoClientCheck(t *testing.T, skipClientSANVerify, goodCl
 	defer del2()
 
 	tlsInfo.SkipClientSANVerify = skipClientSANVerify
-	tlsInfo.TrustedCAFile = clientTLSInfo.CertFile
+	tlsInfo.CAFile = clientTLSInfo.CertFile
 
 	rootCAs := x509.NewCertPool()
 	loaded, err := ioutil.ReadFile(tlsInfo.CertFile)
@@ -166,7 +164,7 @@ func testNewListenerTLSInfoClientCheck(t *testing.T, skipClientSANVerify, goodCl
 	select {
 	case <-chClientErr:
 		if acceptExpected {
-			t.Errorf("accepted for good client address: skipClientSANVerify=%t, goodClientHost=%t", skipClientSANVerify, goodClientHost)
+			t.Errorf("accepted for good client address: skipClientSANVerify=%v, goodClientHost=%v", skipClientSANVerify, goodClientHost)
 		}
 	case acceptErr := <-chAcceptErr:
 		t.Fatalf("unexpected Accept error: %v", acceptErr)
@@ -176,11 +174,10 @@ func testNewListenerTLSInfoClientCheck(t *testing.T, skipClientSANVerify, goodCl
 			t.Errorf("failed to accept *tls.Conn")
 		}
 		if !acceptExpected {
-			t.Errorf("accepted for bad client address: skipClientSANVerify=%t, goodClientHost=%t", skipClientSANVerify, goodClientHost)
+			t.Errorf("accepted for bad client address: skipClientSANVerify=%v, goodClientHost=%v", skipClientSANVerify, goodClientHost)
 		}
 	}
 }
-
 func TestNewListenerTLSEmptyInfo(t *testing.T) {
 	_, err := NewListener("127.0.0.1:0", "https", nil)
 	if err == nil {
@@ -202,12 +199,12 @@ func TestNewTransportTLSInfo(t *testing.T) {
 			KeyFile:  tlsinfo.KeyFile,
 		},
 		{
-			CertFile:      tlsinfo.CertFile,
-			KeyFile:       tlsinfo.KeyFile,
-			TrustedCAFile: tlsinfo.TrustedCAFile,
+			CertFile: tlsinfo.CertFile,
+			KeyFile:  tlsinfo.KeyFile,
+			CAFile:   tlsinfo.CAFile,
 		},
 		{
-			TrustedCAFile: tlsinfo.TrustedCAFile,
+			CAFile: tlsinfo.CAFile,
 		},
 	}
 
@@ -243,13 +240,13 @@ func TestTLSInfoEmpty(t *testing.T) {
 		want bool
 	}{
 		{TLSInfo{}, true},
-		{TLSInfo{TrustedCAFile: "baz"}, true},
+		{TLSInfo{CAFile: "baz"}, true},
 		{TLSInfo{CertFile: "foo"}, false},
 		{TLSInfo{KeyFile: "bar"}, false},
 		{TLSInfo{CertFile: "foo", KeyFile: "bar"}, false},
-		{TLSInfo{CertFile: "foo", TrustedCAFile: "baz"}, false},
-		{TLSInfo{KeyFile: "bar", TrustedCAFile: "baz"}, false},
-		{TLSInfo{CertFile: "foo", KeyFile: "bar", TrustedCAFile: "baz"}, false},
+		{TLSInfo{CertFile: "foo", CAFile: "baz"}, false},
+		{TLSInfo{KeyFile: "bar", CAFile: "baz"}, false},
+		{TLSInfo{CertFile: "foo", KeyFile: "bar", CAFile: "baz"}, false},
 	}
 
 	for i, tt := range tests {
@@ -270,8 +267,8 @@ func TestTLSInfoMissingFields(t *testing.T) {
 	tests := []TLSInfo{
 		{CertFile: tlsinfo.CertFile},
 		{KeyFile: tlsinfo.KeyFile},
-		{CertFile: tlsinfo.CertFile, TrustedCAFile: tlsinfo.TrustedCAFile},
-		{KeyFile: tlsinfo.KeyFile, TrustedCAFile: tlsinfo.TrustedCAFile},
+		{CertFile: tlsinfo.CertFile, CAFile: tlsinfo.CAFile},
+		{KeyFile: tlsinfo.KeyFile, CAFile: tlsinfo.CAFile},
 	}
 
 	for i, info := range tests {
@@ -322,7 +319,7 @@ func TestTLSInfoConfigFuncs(t *testing.T) {
 		},
 
 		{
-			info:       TLSInfo{CertFile: tlsinfo.CertFile, KeyFile: tlsinfo.KeyFile, TrustedCAFile: tlsinfo.CertFile},
+			info:       TLSInfo{CertFile: tlsinfo.CertFile, KeyFile: tlsinfo.KeyFile, CAFile: tlsinfo.CertFile},
 			clientAuth: tls.RequireAndVerifyClientCert,
 			wantCAs:    true,
 		},
@@ -366,7 +363,7 @@ func TestNewListenerTLSInfoSelfCert(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdir)
-	tlsinfo, err := SelfCert(zap.NewExample(), tmpdir, []string{"127.0.0.1"})
+	tlsinfo, err := SelfCert(tmpdir, []string{"127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,23 +29,22 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/etcdserver"
-	"go.etcd.io/etcd/etcdserver/api"
-	"go.etcd.io/etcd/etcdserver/api/membership"
-	"go.etcd.io/etcd/etcdserver/api/v2error"
-	"go.etcd.io/etcd/etcdserver/api/v2http/httptypes"
-	"go.etcd.io/etcd/etcdserver/api/v2store"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/pkg/testutil"
-	"go.etcd.io/etcd/pkg/types"
-	"go.etcd.io/etcd/raft/raftpb"
+	etcdErr "github.com/coreos/etcd/error"
+	"github.com/coreos/etcd/etcdserver"
+	"github.com/coreos/etcd/etcdserver/api"
+	"github.com/coreos/etcd/etcdserver/api/v2http/httptypes"
+	"github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/etcdserver/membership"
+	"github.com/coreos/etcd/pkg/testutil"
+	"github.com/coreos/etcd/pkg/types"
+	"github.com/coreos/etcd/raft/raftpb"
+	"github.com/coreos/etcd/store"
 
 	"github.com/coreos/go-semver/semver"
 	"github.com/jonboulle/clockwork"
-	"go.uber.org/zap"
 )
 
-func mustMarshalEvent(t *testing.T, ev *v2store.Event) string {
+func mustMarshalEvent(t *testing.T, ev *store.Event) string {
 	b := new(bytes.Buffer)
 	if err := json.NewEncoder(b).Encode(ev); err != nil {
 		t.Fatalf("error marshalling event %#v: %v", ev, err)
@@ -132,11 +131,6 @@ func (s *serverRecorder) UpdateMember(_ context.Context, m membership.Member) ([
 	return nil, nil
 }
 
-func (s *serverRecorder) PromoteMember(_ context.Context, id uint64) ([]*membership.Member, error) {
-	s.actions = append(s.actions, action{name: "PromoteMember", params: []interface{}{id}})
-	return nil, nil
-}
-
 type action struct {
 	name   string
 	params []interface{}
@@ -173,9 +167,6 @@ func (rs *resServer) RemoveMember(_ context.Context, _ uint64) ([]*membership.Me
 func (rs *resServer) UpdateMember(_ context.Context, _ membership.Member) ([]*membership.Member, error) {
 	return nil, nil
 }
-func (rs *resServer) PromoteMember(_ context.Context, _ uint64) ([]*membership.Member, error) {
-	return nil, nil
-}
 
 func boolp(b bool) *bool { return &b }
 
@@ -185,11 +176,11 @@ func (drt dummyRaftTimer) Index() uint64 { return uint64(100) }
 func (drt dummyRaftTimer) Term() uint64  { return uint64(5) }
 
 type dummyWatcher struct {
-	echan chan *v2store.Event
+	echan chan *store.Event
 	sidx  uint64
 }
 
-func (w *dummyWatcher) EventChan() chan *v2store.Event {
+func (w *dummyWatcher) EventChan() chan *store.Event {
 	return w.echan
 }
 func (w *dummyWatcher) StartIndex() uint64 { return w.sidx }
@@ -202,19 +193,19 @@ func TestBadRefreshRequest(t *testing.T) {
 	}{
 		{
 			mustNewRequest(t, "foo?refresh=true&value=test"),
-			v2error.EcodeRefreshValue,
+			etcdErr.EcodeRefreshValue,
 		},
 		{
 			mustNewRequest(t, "foo?refresh=true&value=10"),
-			v2error.EcodeRefreshValue,
+			etcdErr.EcodeRefreshValue,
 		},
 		{
 			mustNewRequest(t, "foo?refresh=true"),
-			v2error.EcodeRefreshTTLRequired,
+			etcdErr.EcodeRefreshTTLRequired,
 		},
 		{
 			mustNewRequest(t, "foo?refresh=true&ttl="),
-			v2error.EcodeRefreshTTLRequired,
+			etcdErr.EcodeRefreshTTLRequired,
 		},
 	}
 	for i, tt := range tests {
@@ -223,7 +214,7 @@ func TestBadRefreshRequest(t *testing.T) {
 			t.Errorf("#%d: unexpected nil error!", i)
 			continue
 		}
-		ee, ok := err.(*v2error.Error)
+		ee, ok := err.(*etcdErr.Error)
 		if !ok {
 			t.Errorf("#%d: err is not etcd.Error!", i)
 			continue
@@ -249,119 +240,119 @@ func TestBadParseRequest(t *testing.T) {
 				Body:   nil,
 				Method: "PUT",
 			},
-			v2error.EcodeInvalidForm,
+			etcdErr.EcodeInvalidForm,
 		},
 		{
 			// bad key prefix
 			&http.Request{
 				URL: testutil.MustNewURL(t, "/badprefix/"),
 			},
-			v2error.EcodeInvalidForm,
+			etcdErr.EcodeInvalidForm,
 		},
 		// bad values for prevIndex, waitIndex, ttl
 		{
 			mustNewForm(t, "foo", url.Values{"prevIndex": []string{"garbage"}}),
-			v2error.EcodeIndexNaN,
+			etcdErr.EcodeIndexNaN,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"prevIndex": []string{"1.5"}}),
-			v2error.EcodeIndexNaN,
+			etcdErr.EcodeIndexNaN,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"prevIndex": []string{"-1"}}),
-			v2error.EcodeIndexNaN,
+			etcdErr.EcodeIndexNaN,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"waitIndex": []string{"garbage"}}),
-			v2error.EcodeIndexNaN,
+			etcdErr.EcodeIndexNaN,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"waitIndex": []string{"??"}}),
-			v2error.EcodeIndexNaN,
+			etcdErr.EcodeIndexNaN,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"ttl": []string{"-1"}}),
-			v2error.EcodeTTLNaN,
+			etcdErr.EcodeTTLNaN,
 		},
 		// bad values for recursive, sorted, wait, prevExist, dir, stream
 		{
 			mustNewForm(t, "foo", url.Values{"recursive": []string{"hahaha"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"recursive": []string{"1234"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"recursive": []string{"?"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"sorted": []string{"?"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"sorted": []string{"x"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"wait": []string{"?!"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"wait": []string{"yes"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"prevExist": []string{"yes"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"prevExist": []string{"#2"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"dir": []string{"no"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"dir": []string{"file"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"quorum": []string{"no"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"quorum": []string{"file"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"stream": []string{"zzz"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewForm(t, "foo", url.Values{"stream": []string{"something"}}),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		// prevValue cannot be empty
 		{
 			mustNewForm(t, "foo", url.Values{"prevValue": []string{""}}),
-			v2error.EcodePrevValueRequired,
+			etcdErr.EcodePrevValueRequired,
 		},
 		// wait is only valid with GET requests
 		{
 			mustNewMethodRequest(t, "HEAD", "foo?wait=true"),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		// query values are considered
 		{
 			mustNewRequest(t, "foo?prevExist=wrong"),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 		{
 			mustNewRequest(t, "foo?ttl=wrong"),
-			v2error.EcodeTTLNaN,
+			etcdErr.EcodeTTLNaN,
 		},
 		// but body takes precedence if both are specified
 		{
@@ -370,7 +361,7 @@ func TestBadParseRequest(t *testing.T) {
 				"foo?ttl=12",
 				url.Values{"ttl": []string{"garbage"}},
 			),
-			v2error.EcodeTTLNaN,
+			etcdErr.EcodeTTLNaN,
 		},
 		{
 			mustNewForm(
@@ -378,7 +369,7 @@ func TestBadParseRequest(t *testing.T) {
 				"foo?prevExist=false",
 				url.Values{"prevExist": []string{"yes"}},
 			),
-			v2error.EcodeInvalidField,
+			etcdErr.EcodeInvalidField,
 		},
 	}
 	for i, tt := range tests {
@@ -387,7 +378,7 @@ func TestBadParseRequest(t *testing.T) {
 			t.Errorf("#%d: unexpected nil error!", i)
 			continue
 		}
-		ee, ok := err.(*v2error.Error)
+		ee, ok := err.(*etcdErr.Error)
 		if !ok {
 			t.Errorf("#%d: err is not etcd.Error!", i)
 			continue
@@ -666,7 +657,6 @@ func TestServeMembers(t *testing.T) {
 		members: map[uint64]*membership.Member{1: &memb1, 2: &memb2},
 	}
 	h := &membersHandler{
-		lg:      zap.NewExample(),
 		server:  &serverRecorder{},
 		clock:   clockwork.NewFakeClock(),
 		cluster: cluster,
@@ -720,7 +710,6 @@ func TestServeLeader(t *testing.T) {
 		members: map[uint64]*membership.Member{1: &memb1, 2: &memb2},
 	}
 	h := &membersHandler{
-		lg:      zap.NewExample(),
 		server:  &serverRecorder{},
 		clock:   clockwork.NewFakeClock(),
 		cluster: cluster,
@@ -773,7 +762,6 @@ func TestServeMembersCreate(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	s := &serverRecorder{}
 	h := &membersHandler{
-		lg:      zap.NewExample(),
 		server:  s,
 		clock:   clockwork.NewFakeClock(),
 		cluster: &fakeCluster{id: 1},
@@ -823,7 +811,6 @@ func TestServeMembersDelete(t *testing.T) {
 	}
 	s := &serverRecorder{}
 	h := &membersHandler{
-		lg:      zap.NewExample(),
 		server:  s,
 		cluster: &fakeCluster{id: 1},
 	}
@@ -860,7 +847,6 @@ func TestServeMembersUpdate(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	s := &serverRecorder{}
 	h := &membersHandler{
-		lg:      zap.NewExample(),
 		server:  s,
 		clock:   clockwork.NewFakeClock(),
 		cluster: &fakeCluster{id: 1},
@@ -1153,7 +1139,6 @@ func TestServeMembersFail(t *testing.T) {
 	}
 	for i, tt := range tests {
 		h := &membersHandler{
-			lg:      zap.NewExample(),
 			server:  tt.server,
 			cluster: &fakeCluster{id: 1},
 			clock:   clockwork.NewFakeClock(),
@@ -1187,7 +1172,7 @@ func TestWriteEvent(t *testing.T) {
 	}
 
 	tests := []struct {
-		ev      *v2store.Event
+		ev      *store.Event
 		noValue bool
 		idx     string
 		// TODO(jonboulle): check body as well as just status code
@@ -1196,10 +1181,10 @@ func TestWriteEvent(t *testing.T) {
 	}{
 		// standard case, standard 200 response
 		{
-			&v2store.Event{
-				Action:   v2store.Get,
-				Node:     &v2store.NodeExtern{},
-				PrevNode: &v2store.NodeExtern{},
+			&store.Event{
+				Action:   store.Get,
+				Node:     &store.NodeExtern{},
+				PrevNode: &store.NodeExtern{},
 			},
 			false,
 			"0",
@@ -1208,10 +1193,10 @@ func TestWriteEvent(t *testing.T) {
 		},
 		// check new nodes return StatusCreated
 		{
-			&v2store.Event{
-				Action:   v2store.Create,
-				Node:     &v2store.NodeExtern{},
-				PrevNode: &v2store.NodeExtern{},
+			&store.Event{
+				Action:   store.Create,
+				Node:     &store.NodeExtern{},
+				PrevNode: &store.NodeExtern{},
 			},
 			false,
 			"0",
@@ -1317,7 +1302,7 @@ func TestGetID(t *testing.T) {
 
 	for i, tt := range tests {
 		w := httptest.NewRecorder()
-		id, ok := getID(zap.NewExample(), tt.path, w)
+		id, ok := getID(tt.path, w)
 		if id != tt.wid {
 			t.Errorf("#%d: id = %d, want %d", i, id, tt.wid)
 		}
@@ -1485,7 +1470,7 @@ func TestBadServeKeys(t *testing.T) {
 			// etcdserver.Server etcd error
 			mustNewRequest(t, "foo"),
 			&errServer{
-				err: v2error.NewError(v2error.EcodeKeyNotFound, "/1/pant", 0),
+				err: etcdErr.NewError(etcdErr.EcodeKeyNotFound, "/1/pant", 0),
 			},
 
 			http.StatusNotFound,
@@ -1499,12 +1484,11 @@ func TestBadServeKeys(t *testing.T) {
 			},
 
 			http.StatusInternalServerError,
-			`{"errorCode":300,"message":"Raft Internal Error","cause":"received response with no Event/Watcher","index":0}`,
+			`{"errorCode":300,"message":"Raft Internal Error","cause":"received response with no Event/Watcher!","index":0}`,
 		},
 	}
 	for i, tt := range testBadCases {
 		h := &keysHandler{
-			lg:      zap.NewExample(),
 			timeout: 0, // context times out immediately
 			server:  tt.server,
 			cluster: &fakeCluster{id: 1},
@@ -1555,15 +1539,14 @@ func TestServeKeysGood(t *testing.T) {
 	}
 	server := &resServer{
 		res: etcdserver.Response{
-			Event: &v2store.Event{
-				Action: v2store.Get,
-				Node:   &v2store.NodeExtern{},
+			Event: &store.Event{
+				Action: store.Get,
+				Node:   &store.NodeExtern{},
 			},
 		},
 	}
 	for i, tt := range tests {
 		h := &keysHandler{
-			lg:      zap.NewExample(),
 			timeout: time.Hour,
 			server:  server,
 			cluster: &fakeCluster{id: 1},
@@ -1581,20 +1564,20 @@ func TestServeKeysEvent(t *testing.T) {
 		req   *http.Request
 		rsp   etcdserver.Response
 		wcode int
-		event *v2store.Event
+		event *store.Event
 	}{
 		{
 			mustNewRequest(t, "foo"),
 			etcdserver.Response{
-				Event: &v2store.Event{
-					Action: v2store.Get,
-					Node:   &v2store.NodeExtern{},
+				Event: &store.Event{
+					Action: store.Get,
+					Node:   &store.NodeExtern{},
 				},
 			},
 			http.StatusOK,
-			&v2store.Event{
-				Action: v2store.Get,
-				Node:   &v2store.NodeExtern{},
+			&store.Event{
+				Action: store.Get,
+				Node:   &store.NodeExtern{},
 			},
 		},
 		{
@@ -1604,14 +1587,14 @@ func TestServeKeysEvent(t *testing.T) {
 				url.Values{"noValueOnSuccess": []string{"true"}},
 			),
 			etcdserver.Response{
-				Event: &v2store.Event{
-					Action: v2store.CompareAndSwap,
-					Node:   &v2store.NodeExtern{},
+				Event: &store.Event{
+					Action: store.CompareAndSwap,
+					Node:   &store.NodeExtern{},
 				},
 			},
 			http.StatusOK,
-			&v2store.Event{
-				Action: v2store.CompareAndSwap,
+			&store.Event{
+				Action: store.CompareAndSwap,
 				Node:   nil,
 			},
 		},
@@ -1619,7 +1602,6 @@ func TestServeKeysEvent(t *testing.T) {
 
 	server := &resServer{}
 	h := &keysHandler{
-		lg:      zap.NewExample(),
 		timeout: time.Hour,
 		server:  server,
 		cluster: &fakeCluster{id: 1},
@@ -1652,7 +1634,7 @@ func TestServeKeysEvent(t *testing.T) {
 
 func TestServeKeysWatch(t *testing.T) {
 	req := mustNewRequest(t, "/foo/bar")
-	ec := make(chan *v2store.Event)
+	ec := make(chan *store.Event)
 	dw := &dummyWatcher{
 		echan: ec,
 	}
@@ -1662,15 +1644,14 @@ func TestServeKeysWatch(t *testing.T) {
 		},
 	}
 	h := &keysHandler{
-		lg:      zap.NewExample(),
 		timeout: time.Hour,
 		server:  server,
 		cluster: &fakeCluster{id: 1},
 	}
 	go func() {
-		ec <- &v2store.Event{
-			Action: v2store.Get,
-			Node:   &v2store.NodeExtern{},
+		ec <- &store.Event{
+			Action: store.Get,
+			Node:   &store.NodeExtern{},
 		}
 	}()
 	rw := httptest.NewRecorder()
@@ -1680,9 +1661,9 @@ func TestServeKeysWatch(t *testing.T) {
 	wcode := http.StatusOK
 	wbody := mustMarshalEvent(
 		t,
-		&v2store.Event{
-			Action: v2store.Get,
-			Node:   &v2store.NodeExtern{},
+		&store.Event{
+			Action: store.Get,
+			Node:   &store.NodeExtern{},
 		},
 	)
 
@@ -1714,12 +1695,12 @@ func TestHandleWatch(t *testing.T) {
 		r := httptest.NewRecorder()
 		return r, r
 	}
-	noopEv := func(chan *v2store.Event) {}
+	noopEv := func(chan *store.Event) {}
 
 	tests := []struct {
 		getCtx   func() context.Context
 		getRwRr  func() (http.ResponseWriter, *httptest.ResponseRecorder)
-		doToChan func(chan *v2store.Event)
+		doToChan func(chan *store.Event)
 
 		wbody string
 	}{
@@ -1727,18 +1708,18 @@ func TestHandleWatch(t *testing.T) {
 			// Normal case: one event
 			context.Background,
 			defaultRwRr,
-			func(ch chan *v2store.Event) {
-				ch <- &v2store.Event{
-					Action: v2store.Get,
-					Node:   &v2store.NodeExtern{},
+			func(ch chan *store.Event) {
+				ch <- &store.Event{
+					Action: store.Get,
+					Node:   &store.NodeExtern{},
 				}
 			},
 
 			mustMarshalEvent(
 				t,
-				&v2store.Event{
-					Action: v2store.Get,
-					Node:   &v2store.NodeExtern{},
+				&store.Event{
+					Action: store.Get,
+					Node:   &store.NodeExtern{},
 				},
 			),
 		},
@@ -1746,7 +1727,7 @@ func TestHandleWatch(t *testing.T) {
 			// Channel is closed, no event
 			context.Background,
 			defaultRwRr,
-			func(ch chan *v2store.Event) {
+			func(ch chan *store.Event) {
 				close(ch)
 			},
 
@@ -1784,13 +1765,13 @@ func TestHandleWatch(t *testing.T) {
 	for i, tt := range tests {
 		rw, rr := tt.getRwRr()
 		wa := &dummyWatcher{
-			echan: make(chan *v2store.Event, 1),
+			echan: make(chan *store.Event, 1),
 			sidx:  10,
 		}
 		tt.doToChan(wa.echan)
 
 		resp := etcdserver.Response{Term: 5, Index: 100, Watcher: wa}
-		handleKeyWatch(tt.getCtx(), zap.NewExample(), rw, resp, false)
+		handleKeyWatch(tt.getCtx(), rw, resp, false)
 
 		wcode := http.StatusOK
 		wct := "application/json"
@@ -1827,7 +1808,7 @@ func TestHandleWatchStreaming(t *testing.T) {
 		make(chan struct{}, 1),
 	}
 	wa := &dummyWatcher{
-		echan: make(chan *v2store.Event),
+		echan: make(chan *store.Event),
 	}
 
 	// Launch the streaming handler in the background with a cancellable context
@@ -1835,7 +1816,7 @@ func TestHandleWatchStreaming(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		resp := etcdserver.Response{Watcher: wa}
-		handleKeyWatch(ctx, zap.NewExample(), rw, resp, true)
+		handleKeyWatch(ctx, rw, resp, true)
 		close(done)
 	}()
 
@@ -1865,9 +1846,9 @@ func TestHandleWatchStreaming(t *testing.T) {
 
 	// Now send the first event
 	select {
-	case wa.echan <- &v2store.Event{
-		Action: v2store.Get,
-		Node:   &v2store.NodeExtern{},
+	case wa.echan <- &store.Event{
+		Action: store.Get,
+		Node:   &store.NodeExtern{},
 	}:
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for send")
@@ -1883,9 +1864,9 @@ func TestHandleWatchStreaming(t *testing.T) {
 	// And check the body is as expected
 	wbody = mustMarshalEvent(
 		t,
-		&v2store.Event{
-			Action: v2store.Get,
-			Node:   &v2store.NodeExtern{},
+		&store.Event{
+			Action: store.Get,
+			Node:   &store.NodeExtern{},
 		},
 	)
 	g = rw.Body.String()
@@ -1895,9 +1876,9 @@ func TestHandleWatchStreaming(t *testing.T) {
 
 	// Rinse and repeat
 	select {
-	case wa.echan <- &v2store.Event{
-		Action: v2store.Get,
-		Node:   &v2store.NodeExtern{},
+	case wa.echan <- &store.Event{
+		Action: store.Get,
+		Node:   &store.NodeExtern{},
 	}:
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for send")
@@ -1929,33 +1910,33 @@ func TestHandleWatchStreaming(t *testing.T) {
 func TestTrimEventPrefix(t *testing.T) {
 	pre := "/abc"
 	tests := []struct {
-		ev  *v2store.Event
-		wev *v2store.Event
+		ev  *store.Event
+		wev *store.Event
 	}{
 		{
 			nil,
 			nil,
 		},
 		{
-			&v2store.Event{},
-			&v2store.Event{},
+			&store.Event{},
+			&store.Event{},
 		},
 		{
-			&v2store.Event{Node: &v2store.NodeExtern{Key: "/abc/def"}},
-			&v2store.Event{Node: &v2store.NodeExtern{Key: "/def"}},
+			&store.Event{Node: &store.NodeExtern{Key: "/abc/def"}},
+			&store.Event{Node: &store.NodeExtern{Key: "/def"}},
 		},
 		{
-			&v2store.Event{PrevNode: &v2store.NodeExtern{Key: "/abc/ghi"}},
-			&v2store.Event{PrevNode: &v2store.NodeExtern{Key: "/ghi"}},
+			&store.Event{PrevNode: &store.NodeExtern{Key: "/abc/ghi"}},
+			&store.Event{PrevNode: &store.NodeExtern{Key: "/ghi"}},
 		},
 		{
-			&v2store.Event{
-				Node:     &v2store.NodeExtern{Key: "/abc/def"},
-				PrevNode: &v2store.NodeExtern{Key: "/abc/ghi"},
+			&store.Event{
+				Node:     &store.NodeExtern{Key: "/abc/def"},
+				PrevNode: &store.NodeExtern{Key: "/abc/ghi"},
 			},
-			&v2store.Event{
-				Node:     &v2store.NodeExtern{Key: "/def"},
-				PrevNode: &v2store.NodeExtern{Key: "/ghi"},
+			&store.Event{
+				Node:     &store.NodeExtern{Key: "/def"},
+				PrevNode: &store.NodeExtern{Key: "/ghi"},
 			},
 		},
 	}
@@ -1970,28 +1951,28 @@ func TestTrimEventPrefix(t *testing.T) {
 func TestTrimNodeExternPrefix(t *testing.T) {
 	pre := "/abc"
 	tests := []struct {
-		n  *v2store.NodeExtern
-		wn *v2store.NodeExtern
+		n  *store.NodeExtern
+		wn *store.NodeExtern
 	}{
 		{
 			nil,
 			nil,
 		},
 		{
-			&v2store.NodeExtern{Key: "/abc/def"},
-			&v2store.NodeExtern{Key: "/def"},
+			&store.NodeExtern{Key: "/abc/def"},
+			&store.NodeExtern{Key: "/def"},
 		},
 		{
-			&v2store.NodeExtern{
+			&store.NodeExtern{
 				Key: "/abc/def",
-				Nodes: []*v2store.NodeExtern{
+				Nodes: []*store.NodeExtern{
 					{Key: "/abc/def/1"},
 					{Key: "/abc/def/2"},
 				},
 			},
-			&v2store.NodeExtern{
+			&store.NodeExtern{
 				Key: "/def",
-				Nodes: []*v2store.NodeExtern{
+				Nodes: []*store.NodeExtern{
 					{Key: "/def/1"},
 					{Key: "/def/2"},
 				},

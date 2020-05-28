@@ -14,7 +14,10 @@
 
 package e2e
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type kvExec struct {
 	key, val   string
@@ -86,4 +89,61 @@ func ctlV3WatchFailPerm(cx ctlCtx, args []string) error {
 		return err
 	}
 	return proc.Close()
+}
+
+func ctlV3Put(cx ctlCtx, key, value, leaseID string, flags ...string) error {
+	skipValue := false
+	skipLease := false
+	for _, f := range flags {
+		if f == "--ignore-value" {
+			skipValue = true
+		}
+		if f == "--ignore-lease" {
+			skipLease = true
+		}
+	}
+	cmdArgs := append(cx.PrefixArgs(), "put", key)
+	if !skipValue {
+		cmdArgs = append(cmdArgs, value)
+	}
+	if leaseID != "" && !skipLease {
+		cmdArgs = append(cmdArgs, "--lease", leaseID)
+	}
+	if len(flags) != 0 {
+		cmdArgs = append(cmdArgs, flags...)
+	}
+	return spawnWithExpect(cmdArgs, "OK")
+}
+
+type kv struct {
+	key, val string
+}
+
+func ctlV3Get(cx ctlCtx, args []string, kvs ...kv) error {
+	cmdArgs := append(cx.PrefixArgs(), "get")
+	cmdArgs = append(cmdArgs, args...)
+	if !cx.quorum {
+		cmdArgs = append(cmdArgs, "--consistency", "s")
+	}
+	var lines []string
+	for _, elem := range kvs {
+		lines = append(lines, elem.key, elem.val)
+	}
+	return spawnWithExpects(cmdArgs, lines...)
+}
+
+// ctlV3GetWithErr runs "get" command expecting no output but error
+func ctlV3GetWithErr(cx ctlCtx, args []string, errs []string) error {
+	cmdArgs := append(cx.PrefixArgs(), "get")
+	cmdArgs = append(cmdArgs, args...)
+	if !cx.quorum {
+		cmdArgs = append(cmdArgs, "--consistency", "s")
+	}
+	return spawnWithExpects(cmdArgs, errs...)
+}
+
+func ctlV3Del(cx ctlCtx, args []string, num int) error {
+	cmdArgs := append(cx.PrefixArgs(), "del")
+	cmdArgs = append(cmdArgs, args...)
+	return spawnWithExpects(cmdArgs, fmt.Sprintf("%d", num))
 }

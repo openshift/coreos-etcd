@@ -18,7 +18,7 @@ package mirror
 import (
 	"context"
 
-	"go.etcd.io/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3"
 )
 
 const (
@@ -90,7 +90,7 @@ func (s *syncer) SyncBase(ctx context.Context) (<-chan clientv3.GetResponse, cha
 				return
 			}
 
-			respchan <- *resp
+			respchan <- (clientv3.GetResponse)(*resp)
 
 			if !resp.More {
 				return

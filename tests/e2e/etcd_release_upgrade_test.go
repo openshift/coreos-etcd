@@ -16,15 +16,16 @@ package e2e
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/pkg/fileutil"
-	"go.etcd.io/etcd/pkg/testutil"
-	"go.etcd.io/etcd/version"
+	"github.com/coreos/etcd/pkg/fileutil"
+	"github.com/coreos/etcd/pkg/testutil"
+	"github.com/coreos/etcd/version"
 )
 
 // TestReleaseUpgrade ensures that changes to master branch does not affect
@@ -63,7 +64,7 @@ func TestReleaseUpgrade(t *testing.T) {
 		break
 	}
 	if err != nil {
-		t.Skipf("cannot pull version (%v)", err)
+		t.Fatalf("cannot pull version (%v)", err)
 	}
 
 	os.Setenv("ETCDCTL_API", "3")
@@ -103,13 +104,8 @@ func TestReleaseUpgrade(t *testing.T) {
 		}
 	}
 
-	// TODO: update after release candidate
 	// expect upgraded cluster version
-	ver := version.Version
-	if strings.HasSuffix(ver, "-pre") {
-		ver = strings.Replace(ver, "-pre", "", 1)
-	}
-	if err := cURLGet(cx.epc, cURLReq{endpoint: "/metrics", expected: fmt.Sprintf(`etcd_cluster_version{cluster_version="%s"} 1`, ver), metricsURLScheme: cx.cfg.metricsURLScheme}); err != nil {
+	if err := cURLGet(cx.epc, cURLReq{endpoint: "/metrics", expected: fmt.Sprintf(`etcd_cluster_version{cluster_version="%s"} 1`, version.Cluster(version.Version)), metricsURLScheme: cx.cfg.metricsURLScheme}); err != nil {
 		cx.t.Fatalf("failed get with curl (%v)", err)
 	}
 }
@@ -169,7 +165,7 @@ func TestReleaseUpgradeWithRestart(t *testing.T) {
 			epc.procs[i].Config().execPath = binDir + "/etcd"
 			epc.procs[i].Config().keepDataDir = true
 			if err := epc.procs[i].Restart(); err != nil {
-				t.Errorf("error restarting etcd process (%v)", err)
+				t.Fatalf("error restarting etcd process (%v)", err)
 			}
 			wg.Done()
 		}(i)
@@ -179,4 +175,89 @@ func TestReleaseUpgradeWithRestart(t *testing.T) {
 	if err := ctlV3Get(cx, []string{kvs[0].key}, []kv{kvs[0]}...); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type cURLReq struct {
+	username string
+	password string
+
+	isTLS   bool
+	timeout int
+
+	endpoint string
+
+	value    string
+	expected string
+	header   string
+
+	metricsURLScheme string
+
+	ciphers string
+}
+
+// cURLPrefixArgs builds the beginning of a curl command for a given key
+// addressed to a random URL in the given cluster.
+func cURLPrefixArgs(clus *etcdProcessCluster, method string, req cURLReq) []string {
+	var (
+		cmdArgs = []string{"curl"}
+		acurl   = clus.procs[rand.Intn(clus.cfg.clusterSize)].Config().acurl
+	)
+	if req.metricsURLScheme != "https" {
+		if req.isTLS {
+			if clus.cfg.clientTLS != clientTLSAndNonTLS {
+				panic("should not use cURLPrefixArgsUseTLS when serving only TLS or non-TLS")
+			}
+			cmdArgs = append(cmdArgs, "--cacert", caPath, "--cert", certPath, "--key", privateKeyPath)
+			acurl = toTLS(clus.procs[rand.Intn(clus.cfg.clusterSize)].Config().acurl)
+		} else if clus.cfg.clientTLS == clientTLS {
+			if !clus.cfg.noCN {
+				cmdArgs = append(cmdArgs, "--cacert", caPath, "--cert", certPath, "--key", privateKeyPath)
+			} else {
+				cmdArgs = append(cmdArgs, "--cacert", caPath, "--cert", certPath3, "--key", privateKeyPath3)
+			}
+		}
+	}
+	if req.metricsURLScheme != "" {
+		acurl = clus.procs[rand.Intn(clus.cfg.clusterSize)].EndpointsMetrics()[0]
+	}
+	ep := acurl + req.endpoint
+
+	if req.username != "" || req.password != "" {
+		cmdArgs = append(cmdArgs, "-L", "-u", fmt.Sprintf("%s:%s", req.username, req.password), ep)
+	} else {
+		cmdArgs = append(cmdArgs, "-L", ep)
+	}
+	if req.timeout != 0 {
+		cmdArgs = append(cmdArgs, "-m", fmt.Sprintf("%d", req.timeout))
+	}
+
+	if req.header != "" {
+		cmdArgs = append(cmdArgs, "-H", req.header)
+	}
+
+	if req.ciphers != "" {
+		cmdArgs = append(cmdArgs, "--ciphers", req.ciphers)
+	}
+
+	switch method {
+	case "POST", "PUT":
+		dt := req.value
+		if !strings.HasPrefix(dt, "{") { // for non-JSON value
+			dt = "value=" + dt
+		}
+		cmdArgs = append(cmdArgs, "-X", method, "-d", dt)
+	}
+	return cmdArgs
+}
+
+func cURLPost(clus *etcdProcessCluster, req cURLReq) error {
+	return spawnWithExpect(cURLPrefixArgs(clus, "POST", req), req.expected)
+}
+
+func cURLPut(clus *etcdProcessCluster, req cURLReq) error {
+	return spawnWithExpect(cURLPrefixArgs(clus, "PUT", req), req.expected)
+}
+
+func cURLGet(clus *etcdProcessCluster, req cURLReq) error {
+	return spawnWithExpect(cURLPrefixArgs(clus, "GET", req), req.expected)
 }

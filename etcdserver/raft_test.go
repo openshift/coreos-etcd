@@ -17,17 +17,16 @@ package etcdserver
 import (
 	"encoding/json"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/etcdserver/api/membership"
-	"go.etcd.io/etcd/pkg/mock/mockstorage"
-	"go.etcd.io/etcd/pkg/pbutil"
-	"go.etcd.io/etcd/pkg/types"
-	"go.etcd.io/etcd/raft"
-	"go.etcd.io/etcd/raft/raftpb"
-	"go.uber.org/zap"
+	"github.com/coreos/etcd/etcdserver/membership"
+	"github.com/coreos/etcd/pkg/mock/mockstorage"
+	"github.com/coreos/etcd/pkg/pbutil"
+	"github.com/coreos/etcd/pkg/types"
+	"github.com/coreos/etcd/raft"
+	"github.com/coreos/etcd/raft/raftpb"
+	"github.com/coreos/etcd/rafthttp"
 )
 
 func TestGetIDs(t *testing.T) {
@@ -46,17 +45,17 @@ func TestGetIDs(t *testing.T) {
 		widSet []uint64
 	}{
 		{nil, []raftpb.Entry{}, []uint64{}},
-		{&raftpb.ConfState{Voters: []uint64{1}},
+		{&raftpb.ConfState{Nodes: []uint64{1}},
 			[]raftpb.Entry{}, []uint64{1}},
-		{&raftpb.ConfState{Voters: []uint64{1}},
+		{&raftpb.ConfState{Nodes: []uint64{1}},
 			[]raftpb.Entry{addEntry}, []uint64{1, 2}},
-		{&raftpb.ConfState{Voters: []uint64{1}},
+		{&raftpb.ConfState{Nodes: []uint64{1}},
 			[]raftpb.Entry{addEntry, removeEntry}, []uint64{1}},
-		{&raftpb.ConfState{Voters: []uint64{1}},
+		{&raftpb.ConfState{Nodes: []uint64{1}},
 			[]raftpb.Entry{addEntry, normalEntry}, []uint64{1, 2}},
-		{&raftpb.ConfState{Voters: []uint64{1}},
+		{&raftpb.ConfState{Nodes: []uint64{1}},
 			[]raftpb.Entry{addEntry, normalEntry, updateEntry}, []uint64{1, 2}},
-		{&raftpb.ConfState{Voters: []uint64{1}},
+		{&raftpb.ConfState{Nodes: []uint64{1}},
 			[]raftpb.Entry{addEntry, removeEntry, normalEntry}, []uint64{1}},
 	}
 
@@ -65,7 +64,7 @@ func TestGetIDs(t *testing.T) {
 		if tt.confState != nil {
 			snap.Metadata.ConfState = *tt.confState
 		}
-		idSet := getIDs(testLogger, &snap, tt.ents)
+		idSet := getIDs(&snap, tt.ents)
 		if !reflect.DeepEqual(idSet, tt.widSet) {
 			t.Errorf("#%d: idset = %#v, want %#v", i, idSet, tt.widSet)
 		}
@@ -96,7 +95,7 @@ func TestCreateConfigChangeEnts(t *testing.T) {
 			1,
 			1, 1,
 
-			nil,
+			[]raftpb.Entry{},
 		},
 		{
 			[]uint64{1, 2},
@@ -137,15 +136,15 @@ func TestCreateConfigChangeEnts(t *testing.T) {
 			2, 2,
 
 			[]raftpb.Entry{
-				{Term: 2, Index: 3, Type: raftpb.EntryConfChange, Data: pbutil.MustMarshal(addcc1)},
-				{Term: 2, Index: 4, Type: raftpb.EntryConfChange, Data: pbutil.MustMarshal(removecc2)},
-				{Term: 2, Index: 5, Type: raftpb.EntryConfChange, Data: pbutil.MustMarshal(removecc3)},
+				{Term: 2, Index: 3, Type: raftpb.EntryConfChange, Data: pbutil.MustMarshal(removecc2)},
+				{Term: 2, Index: 4, Type: raftpb.EntryConfChange, Data: pbutil.MustMarshal(removecc3)},
+				{Term: 2, Index: 5, Type: raftpb.EntryConfChange, Data: pbutil.MustMarshal(addcc1)},
 			},
 		},
 	}
 
 	for i, tt := range tests {
-		gents := createConfigChangeEnts(testLogger, tt.ids, tt.self, tt.term, tt.index)
+		gents := createConfigChangeEnts(tt.ids, tt.self, tt.term, tt.index)
 		if !reflect.DeepEqual(gents, tt.wents) {
 			t.Errorf("#%d: ents = %v, want %v", i, gents, tt.wents)
 		}
@@ -155,13 +154,12 @@ func TestCreateConfigChangeEnts(t *testing.T) {
 func TestStopRaftWhenWaitingForApplyDone(t *testing.T) {
 	n := newNopReadyNode()
 	r := newRaftNode(raftNodeConfig{
-		lg:          zap.NewExample(),
 		Node:        n,
 		storage:     mockstorage.NewStorageRecorder(""),
 		raftStorage: raft.NewMemoryStorage(),
-		transport:   newNopTransporter(),
+		transport:   rafthttp.NewNopTransporter(),
 	})
-	srv := &EtcdServer{lgMu: new(sync.RWMutex), lg: zap.NewExample(), r: *r}
+	srv := &EtcdServer{r: *r}
 	srv.r.start(nil)
 	n.readyc <- raft.Ready{}
 	select {
@@ -178,24 +176,19 @@ func TestStopRaftWhenWaitingForApplyDone(t *testing.T) {
 	}
 }
 
-// TestConfigChangeBlocksApply ensures apply blocks if committed entries contain config-change.
-func TestConfigChangeBlocksApply(t *testing.T) {
+// TestConfgChangeBlocksApply ensures apply blocks if committed entries contain config-change.
+func TestConfgChangeBlocksApply(t *testing.T) {
 	n := newNopReadyNode()
 
 	r := newRaftNode(raftNodeConfig{
-		lg:          zap.NewExample(),
 		Node:        n,
 		storage:     mockstorage.NewStorageRecorder(""),
 		raftStorage: raft.NewMemoryStorage(),
-		transport:   newNopTransporter(),
+		transport:   rafthttp.NewNopTransporter(),
 	})
-	srv := &EtcdServer{lgMu: new(sync.RWMutex), lg: zap.NewExample(), r: *r}
+	srv := &EtcdServer{r: *r}
 
-	srv.r.start(&raftReadyHandler{
-		getLead:          func() uint64 { return 0 },
-		updateLead:       func(uint64) {},
-		updateLeadership: func(bool) {},
-	})
+	srv.r.start(&raftReadyHandler{updateLeadership: func(bool) {}})
 	defer srv.r.Stop()
 
 	n.readyc <- raft.Ready{
@@ -224,46 +217,5 @@ func TestConfigChangeBlocksApply(t *testing.T) {
 	case <-continueC:
 	case <-time.After(time.Second):
 		t.Fatalf("unexpected blocking on execution")
-	}
-}
-
-func TestProcessDuplicatedAppRespMessage(t *testing.T) {
-	n := newNopReadyNode()
-	cl := membership.NewCluster(zap.NewExample(), "abc")
-
-	rs := raft.NewMemoryStorage()
-	p := mockstorage.NewStorageRecorder("")
-	tr, sendc := newSendMsgAppRespTransporter()
-	r := newRaftNode(raftNodeConfig{
-		lg:          zap.NewExample(),
-		isIDRemoved: func(id uint64) bool { return cl.IsIDRemoved(types.ID(id)) },
-		Node:        n,
-		transport:   tr,
-		storage:     p,
-		raftStorage: rs,
-	})
-
-	s := &EtcdServer{
-		lgMu:       new(sync.RWMutex),
-		lg:         zap.NewExample(),
-		r:          *r,
-		cluster:    cl,
-		SyncTicker: &time.Ticker{},
-	}
-
-	s.start()
-	defer s.Stop()
-
-	lead := uint64(1)
-
-	n.readyc <- raft.Ready{Messages: []raftpb.Message{
-		{Type: raftpb.MsgAppResp, From: 2, To: lead, Term: 1, Index: 1},
-		{Type: raftpb.MsgAppResp, From: 2, To: lead, Term: 1, Index: 2},
-		{Type: raftpb.MsgAppResp, From: 2, To: lead, Term: 1, Index: 3},
-	}}
-
-	got, want := <-sendc, 1
-	if got != want {
-		t.Errorf("count = %d, want %d", got, want)
 	}
 }

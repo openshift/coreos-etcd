@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/auth/authpb"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/pkg/testutil"
+	"github.com/coreos/etcd/auth/authpb"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/coreos/etcd/pkg/testutil"
 )
 
 // TestV3AuthEmptyUserGet ensures that a get with an empty user will return an empty user error.
@@ -96,7 +96,7 @@ func TestV3AuthRevision(t *testing.T) {
 	rev := presp.Header.Revision
 
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	aresp, aerr := api.Auth.UserAdd(ctx, &pb.AuthUserAddRequest{Name: "root", Password: "123", Options: &authpb.UserAddOptions{NoPassword: false}})
+	aresp, aerr := api.Auth.UserAdd(ctx, &pb.AuthUserAddRequest{Name: "root", Password: "123"})
 	cancel()
 	if aerr != nil {
 		t.Fatal(aerr)
@@ -109,19 +109,9 @@ func TestV3AuthRevision(t *testing.T) {
 // TestV3AuthWithLeaseRevokeWithRoot ensures that granted leases
 // with root user be revoked after TTL.
 func TestV3AuthWithLeaseRevokeWithRoot(t *testing.T) {
-	testV3AuthWithLeaseRevokeWithRoot(t, ClusterConfig{Size: 1})
-}
-
-// TestV3AuthWithLeaseRevokeWithRootJWT creates a lease with a JWT-token enabled cluster.
-// And tests if server is able to revoke expiry lease item.
-func TestV3AuthWithLeaseRevokeWithRootJWT(t *testing.T) {
-	testV3AuthWithLeaseRevokeWithRoot(t, ClusterConfig{Size: 1, AuthToken: defaultTokenJWT})
-}
-
-func testV3AuthWithLeaseRevokeWithRoot(t *testing.T, ccfg ClusterConfig) {
 	defer testutil.AfterTest(t)
 
-	clus := NewClusterV3(t, &ccfg)
+	clus := NewClusterV3(t, &ClusterConfig{Size: 1})
 	defer clus.Terminate(t)
 
 	api := toGRPC(clus.Client(0))
@@ -294,7 +284,7 @@ func TestV3AuthWithLeaseAttach(t *testing.T) {
 
 func authSetupUsers(t *testing.T, auth pb.AuthClient, users []user) {
 	for _, user := range users {
-		if _, err := auth.UserAdd(context.TODO(), &pb.AuthUserAddRequest{Name: user.name, Password: user.password, Options: &authpb.UserAddOptions{NoPassword: false}}); err != nil {
+		if _, err := auth.UserAdd(context.TODO(), &pb.AuthUserAddRequest{Name: user.name, Password: user.password}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := auth.RoleAdd(context.TODO(), &pb.AuthRoleAddRequest{Name: user.role}); err != nil {
@@ -357,7 +347,6 @@ func TestV3AuthNonAuthorizedRPCs(t *testing.T) {
 }
 
 func TestV3AuthOldRevConcurrent(t *testing.T) {
-	t.Skip() // TODO(jingyih): re-enable the test when #10408 is fixed.
 	defer testutil.AfterTest(t)
 	clus := NewClusterV3(t, &ClusterConfig{Size: 1})
 	defer clus.Terminate(t)

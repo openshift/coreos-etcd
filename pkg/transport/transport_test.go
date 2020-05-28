@@ -22,9 +22,9 @@ import (
 	"time"
 )
 
-// TestNewTransportTLSInvalidCipherSuitesTLS12 expects a client with invalid
+// TestNewTransportTLSInvalidCipherSuites expects a client with invalid
 // cipher suites fail to handshake with the server.
-func TestNewTransportTLSInvalidCipherSuitesTLS12(t *testing.T) {
+func TestNewTransportTLSInvalidCipherSuites(t *testing.T) {
 	tlsInfo, del, err := createSelfCert()
 	if err != nil {
 		t.Fatalf("unable to create cert: %v", err)
@@ -57,14 +57,13 @@ func TestNewTransportTLSInvalidCipherSuitesTLS12(t *testing.T) {
 	}()
 	go func() {
 		tr, err := NewTransport(cliTLS, 3*time.Second)
-		tr.TLSClientConfig.MaxVersion = tls.VersionTLS12
 		if err != nil {
-			t.Errorf("unexpected NewTransport error: %v", err)
+			t.Fatalf("unexpected NewTransport error: %v", err)
 		}
 		cli := &http.Client{Transport: tr}
 		_, gerr := cli.Get("https://" + ln.Addr().String())
 		if gerr == nil || !strings.Contains(gerr.Error(), "tls: handshake failure") {
-			t.Error("expected client TLS handshake error")
+			t.Fatal("expected client TLS handshake error")
 		}
 		ln.Close()
 		donec <- struct{}{}
