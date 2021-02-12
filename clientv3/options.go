@@ -42,7 +42,7 @@ var (
 	// client-side non-streaming retry limit, only applied to requests where server responds with
 	// a error code clearly indicating it was unable to process the request such as codes.Unavailable.
 	// If set to 0, retry is disabled.
-	defaultUnaryMaxRetries uint = 100
+	defaultUnaryMaxRetries uint = 500
 
 	// client-side streaming retry limit, only applied to requests where server responds with
 	// a error code clearly indicating it was unable to process the request such as codes.Unavailable.
